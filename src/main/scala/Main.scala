@@ -93,8 +93,8 @@ object Main {
     val ohe = new OneHotEncoder()
 
 
-    df = indexer.fit(df).transform(df)
-    df = ohe.fit(df).transform(df)
+//    df = indexer.fit(df).transform(df)
+//    df = ohe.fit(df).transform(df)
 
     df.show
 
