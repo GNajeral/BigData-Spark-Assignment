@@ -14,6 +14,13 @@ object Main {
     res
   })
 
+  private val replace_na_with_null = udf((x: String) => {
+    var res = new String
+    if (x == "NA") res = null
+    else res = x
+    res
+  })
+
   def main(args: Array[String]): Unit = {
     val spark = SparkSession
       .builder()
@@ -46,14 +53,14 @@ object Main {
     // We check for null values in the "TailNum" column and swap them with "unknown"
     println("--------------------------------- We check for null values in the \"TailNum\" column and swap them with \"unknown\" -----------------------------------------------")
     spark.udf.register("replace_null_with_unknown", replace_null_with_unknown)
+    spark.udf.register("replace_na_with_null", replace_na_with_null)
     df = df.withColumn("tailNum", replace_null_with_unknown(col("tailNum")))
 
-    // We check for missing numerical values in the each column of the dataset
-    println("--------------------------------- We check for missing numerical values in the each column of the dataset -----------------------------------------------")
+    // We check for NA values in the each column of the dataset and set them to null for the imputers to do their work
+    println("--------------------------------- Checking for NA values in the dataset to set them to null for the imputers to do their work -----------------------------------------------")
     for (i <- 0 until df.columns.length) {
       val column = df.columns(i)
-      println(column)
-      df.filter(col(column).contains("NA")).show()
+      df = df.withColumn(column, replace_na_with_null(col(column)))
     }
 
     // Numerical columns for mean imputer and most frequent imputer
@@ -82,7 +89,13 @@ object Main {
     imputer.setInputCols(num_cols_mean).setOutputCols(num_cols_mean).setStrategy("mean")
     df = imputer.fit(df).transform(df)
 
-    df.show
+    // We check for missing numerical values in the each column of the dataset
+    println("--------------------------------- We check for missing numerical values in the each column of the dataset -----------------------------------------------")
+    for (i <- 0 until df.columns.length) {
+      val column = df.columns(i)
+      println(column)
+      df.filter(col(column).contains("NA")).show()
+    }
 
     // Declaration of the indexer that will transform entries to integer values
     println("--------------------------------- Declaration of the indexer that will transform entries to integer values -----------------------------------------------")
@@ -96,7 +109,10 @@ object Main {
 //    df = indexer.fit(df).transform(df)
 //    df = ohe.fit(df).transform(df)
 
+    println("--------------------------------- Processed Dataset -----------------------------------------------")
     df.show
+    println("--------------------------------- Target Variable -----------------------------------------------")
+    t_col.show
 
 
   }
