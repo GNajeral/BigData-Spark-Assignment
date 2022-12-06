@@ -36,25 +36,36 @@ object Main {
     println()
     println("--------------------------------- We separate our target variable from the rest of the dataset, saving it in a different one -----------------------------------------------")
     var t_col = df.select("ArrDelay")
+    println("--------------------------------- Target Variable -----------------------------------------------")
+    t_col.show
+
 
     // We delete the columns we do not need
     println("--------------------------------- We delete the columns we do not need -----------------------------------------------")
     val columns_to_drop = Array("ArrTime", "ActualElapsedTime", "AirTime", "TaxiIn", "Diverted", "CarrierDelay", "WeatherDelay", "NASDelay", "SecurityDelay", "LateAircraftDelay", "ArrDelay")
     df = df.drop(columns_to_drop:_*)
+    println("--------------------------------- Done -----------------------------------------------")
+
 
     // We delete all the rows that contain cancelled flights, since this will not be useful for our prediction goal
     println("--------------------------------- We delete all the rows that contain cancelled flights, since this will not be useful for our prediction goal -----------------------------------------------")
     df = df.filter("Cancelled == 0")
+    println("--------------------------------- Done -----------------------------------------------")
+
 
     // Therefore we eliminate the "CancellationCode" and "Cancelled" columns
     println("--------------------------------- Therefore we eliminate the \"CancellationCode\" and \"Cancelled\" columns -----------------------------------------------")
     df = df.drop("Cancelled","CancellationCode")
+    println("--------------------------------- Done -----------------------------------------------")
+
 
     // We check for null values in the "TailNum" column and swap them with "unknown"
     println("--------------------------------- We check for null values in the \"TailNum\" column and swap them with \"unknown\" -----------------------------------------------")
     spark.udf.register("replace_null_with_unknown", replace_null_with_unknown)
     spark.udf.register("replace_na_with_null", replace_na_with_null)
     df = df.withColumn("tailNum", replace_null_with_unknown(col("tailNum")))
+    println("--------------------------------- Done -----------------------------------------------")
+
 
     // We check for NA values in the each column of the dataset and set them to null for the imputers to do their work
     println("--------------------------------- Checking for NA values in the dataset to set them to null for the imputers to do their work -----------------------------------------------")
@@ -62,9 +73,11 @@ object Main {
       val column = df.columns(i)
       df = df.withColumn(column, replace_na_with_null(col(column)))
     }
+    println("--------------------------------- Done -----------------------------------------------")
+
 
     // Numerical columns for mean imputer and most frequent imputer
-    println("--------------------------------- Numerical columns to be transformed: -----------------------------------------------")
+    //println("--------------------------------- Numerical columns to be transformed: -----------------------------------------------")
     val num_cols_mean = Array("DepTime","CRSDepTime","CRSArrTime","CRSElapsedTime","DepDelay","Distance","TaxiOut")
     val num_cols_mf = Array("Year","Month","DayofMonth","DayOfWeek")
 
@@ -75,6 +88,8 @@ object Main {
       if (num_cols_mean.contains(colName) || num_cols_mf.contains(colName))
         df = df.withColumn(colName,col(colName).cast(IntegerType))
     }
+    println("--------------------------------- Done -----------------------------------------------")
+
 
     // We apply the most frequent imputer for the columns Year Month DayOfMonth and DayOfWeek
     println("--------------------------------- We apply the most frequent imputer for the columns \"Year\",\"Month\",\"DayofMonth\",\"DayOfWeek\" -----------------------------------------------")
@@ -83,12 +98,17 @@ object Main {
       .setOutputCols(num_cols_mf)
       .setStrategy("mode")
     df = imputer.fit(df).transform(df)
+    println("--------------------------------- Done -----------------------------------------------")
+
 
     // We apply the mean imputer for the rest of the numerical columns
     println("--------------------------------- We apply the mean imputer for the columns \"DepTime\",\"CRSDepTime\",\"CRSArrTime\",\"CRSElapsedTime\",\"DepDelay\",\"Distance\",\"TaxiOut\" -----------------------------------------------")
     imputer.setInputCols(num_cols_mean).setOutputCols(num_cols_mean).setStrategy("mean")
     df = imputer.fit(df).transform(df)
+    println("--------------------------------- Done -----------------------------------------------")
 
+
+    /*
     // We check for missing numerical values in the each column of the dataset
     println("--------------------------------- We check for missing numerical values in the each column of the dataset -----------------------------------------------")
     for (i <- 0 until df.columns.length) {
@@ -96,23 +116,28 @@ object Main {
       println(column)
       df.filter(col(column).contains("NA")).show()
     }
+    println("--------------------------------- Done -----------------------------------------------")
+*/
+
 
     // Declaration of the indexer that will transform entries to integer values
-    println("--------------------------------- Declaration of the indexer that will transform entries to integer values -----------------------------------------------")
-    val indexer = new StringIndexer()
+    val indexer = new StringIndexer().setInputCols(Array("UniqueCarrier", "tailNum", "Origin", "Dest")).setOutputCols(Array("UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed"))
+
 
     // Declaration of the one hot encoder that will process the categorical variables
-    println("--------------------------------- Declaration of the one hot encoder that will process the categorical variables -----------------------------------------------")
-    val ohe = new OneHotEncoder()
+    val ohe = new OneHotEncoder().setInputCols(Array("UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed")).setOutputCols(Array("UniqueCarrier", "tailNum", "Origin", "Dest"))
 
-
-//    df = indexer.fit(df).transform(df)
-//    df = ohe.fit(df).transform(df)
+    println("--------------------------------- Indexing Dataset -----------------------------------------------")
+    df = indexer.fit(df).transform(df)
+    println("--------------------------------- Done -----------------------------------------------")
+    df = df.drop("UniqueCarrier", "tailNum", "Origin", "Dest")
+    println("--------------------------------- Applying One Hot Encoder -----------------------------------------------")
+    df = ohe.fit(df).transform(df)
+    println("--------------------------------- Done -----------------------------------------------")
+    df = df.drop("UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed")
 
     println("--------------------------------- Processed Dataset -----------------------------------------------")
     df.show
-    println("--------------------------------- Target Variable -----------------------------------------------")
-    t_col.show
 
 
   }
