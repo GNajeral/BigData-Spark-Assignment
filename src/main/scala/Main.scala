@@ -67,6 +67,7 @@ object Main {
     df = df.drop("CRSDepTime")
     println("--------------------------------- Done -----------------------------------------------")
 
+
     // We delete the plane tailnumbers that dont have any data from plane-data dataset
     println("--------------------------------- We delete the plane tailnumbers that dont have any data from plane-data dataset -----------------------------------------------")
     df_plane = df_plane.filter("type is NOT NULL AND manufacturer is NOT NULL AND issue_date is NOT NULL AND model is NOT NULL AND aircraft_type is NOT NULL AND engine_type is NOT NULL AND year is NOT NULL")
@@ -101,7 +102,7 @@ object Main {
     println("--------------------------------- Done -----------------------------------------------")
 
     // Join of the two datasets
-    println("--------------------------------- Joinig both datasets -----------------------------------------------")
+    println("--------------------------------- Joining both datasets -----------------------------------------------")
     df = df.join(df_plane, "tailNum")
     println("--------------------------------- Done -----------------------------------------------")
 
