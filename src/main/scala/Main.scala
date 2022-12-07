@@ -3,9 +3,14 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.{col, udf}
 import org.apache.spark.sql.types.IntegerType
 
+import java.text.SimpleDateFormat
+import java.util.{Calendar, GregorianCalendar}
+
 
 
 object Main {
+  val DateFormat = new SimpleDateFormat("MM/dd/yyyy")
+  val calendar = new GregorianCalendar()
 
   private val replace_null_with_unknown = udf((x: String) => {
     var res = new String
@@ -51,9 +56,11 @@ object Main {
     df_plane = df_plane.filter("type is NOT NULL AND manufacturer is NOT NULL AND issue_date is NOT NULL AND model is NOT NULL AND status is NOT NULL AND aircraft_type is NOT NULL AND engine_type is NOT NULL AND year is NOT NULL")
     println("--------------------------------- Done -----------------------------------------------")
 
-    // Renaming column "year" to "year_produced" in df_plane dataset
-    println("--------------------------------- Renaming column \"year\" to \"year_produced\" in df_plane dataset -----------------------------------------------")
-    df_plane = df_plane.withColumnRenamed("year","year_produced")
+
+    // Renaming column "year" to "year_produced" in df_plane dataset and elimnate it
+    println("--------------------------------- Renaming column \"year\" to \"year_introduced\" in df_plane dataset -----------------------------------------------")
+    df_plane = df_plane.withColumnRenamed("year","year_introduced")
+    df_plane = df_plane.drop("year_introduced")
     println("--------------------------------- Done -----------------------------------------------")
 
 
@@ -74,6 +81,7 @@ object Main {
     println("--------------------------------- We check for null values in the \"TailNum\" column and swap them with \"unknown\" -----------------------------------------------")
     spark.udf.register("replace_null_with_unknown", replace_null_with_unknown)
     spark.udf.register("replace_na_with_null", replace_na_with_null)
+    spark.udf.register("replace_issueDate_with_planeAge", replace_issueDate_with_planeAge)
     df = df.withColumn("tailNum", replace_null_with_unknown(col("tailNum")))
     println("--------------------------------- Done -----------------------------------------------")
 
@@ -91,14 +99,16 @@ object Main {
     }
     println("--------------------------------- Done -----------------------------------------------")
 
+    df.show()
 
-    // Numerical columns for mean imputer and most frequent imputer
+    // Columns for mean imputer and most frequent imputer
     //println("--------------------------------- Numerical columns to be transformed: -----------------------------------------------")
-    val num_cols_mean = Array("DepTime","CRSDepTime","CRSArrTime","CRSElapsedTime","DepDelay","Distance","TaxiOut")
-    val num_cols_mf = Array("Year","Month","DayofMonth","DayOfWeek")
+    val cols_mean = Array("DepTime","CRSDepTime","CRSArrTime","CRSElapsedTime","DepDelay","Distance","TaxiOut")
+    val cols_mf = Array("Year","Month","DayofMonth","DayOfWeek","type")
+    //"type","engine_type","aircraft_type","model","issue_date","manufacturer"
 
-    // We cast to Integer every numerical column in order to be able to use the imputer
-    println("--------------------------------- We cast to Integer every numerical column in order to be able to use the imputer -----------------------------------------------")
+    // We cast to Integer every column in order to be able to use the imputer
+    println("--------------------------------- We cast to Integer every column in order to be able to use the imputer -----------------------------------------------")
     for (i <- 0 until  df.columns.length){
       val colName = df.columns(i)
       if (num_cols_mean.contains(colName) || num_cols_mf.contains(colName))
@@ -124,6 +134,12 @@ object Main {
     println("--------------------------------- Done -----------------------------------------------")
 
 
+    // We create the column "PlaneAge" from the data in "Year" and "issue_date", to then remove the column "issue_date"
+    println("--------------------------------- We create the column \"PlaneAge\" from the data in \"Year\" and \"issue_date\", to then remove the column \"issue_date\" -----------------------------------------------")
+    df = df.withColumn("issue_date", replace_issueDate_with_planeAge(col("Year"), col("issue_date")))
+    df = df.withColumnRenamed("issue_date", "PlaneAge")
+    println("--------------------------------- Done -----------------------------------------------")
+
     /*
     // We check for missing numerical values in the each column of the dataset
     println("--------------------------------- We check for missing numerical values in the each column of the dataset -----------------------------------------------")
@@ -136,7 +152,8 @@ object Main {
 */
 
     println("--------------------------------- Processed Dataset -----------------------------------------------")
-    df.show
+    df.show()
+
 
     // Declaration of the indexer that will transform entries to integer values
     val indexer = new StringIndexer().setInputCols(Array("UniqueCarrier", "tailNum", "Origin", "Dest")).setOutputCols(Array("UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed"))
