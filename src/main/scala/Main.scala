@@ -31,18 +31,12 @@ object Main {
     spark.sparkContext.setLogLevel("ERROR")
 
     var df = spark.read.option("header",value = true).csv("src/main/resources/2008.csv")
-
-    // We separate our target_variable from the rest of the dataset, saving it in a different one
-    println()
-    println("--------------------------------- We separate our target variable from the rest of the dataset, saving it in a different one -----------------------------------------------")
-    var t_col = df.select("ArrDelay")
-    println("--------------------------------- Target Variable -----------------------------------------------")
-    t_col.show
+    var df_plane = spark.read.option("header",value = true).csv("src/main/resources/plane-data.csv")
 
 
     // We delete the columns we do not need
     println("--------------------------------- We delete the columns we do not need -----------------------------------------------")
-    val columns_to_drop = Array("ArrTime", "ActualElapsedTime", "AirTime", "TaxiIn", "Diverted", "CarrierDelay", "WeatherDelay", "NASDelay", "SecurityDelay", "LateAircraftDelay", "ArrDelay")
+    val columns_to_drop = Array("ArrTime", "ActualElapsedTime", "AirTime", "TaxiIn", "Diverted", "CarrierDelay", "WeatherDelay", "NASDelay", "SecurityDelay", "LateAircraftDelay")
     df = df.drop(columns_to_drop:_*)
     println("--------------------------------- Done -----------------------------------------------")
 
@@ -52,6 +46,16 @@ object Main {
     df = df.filter("Cancelled == 0")
     println("--------------------------------- Done -----------------------------------------------")
 
+    // We delete the plane tailnumbers that dont have any data from plane-data dataset
+    println("--------------------------------- We delete the plane tailnumbers that dont have any data from plane-data dataset -----------------------------------------------")
+    df_plane = df_plane.filter("type is NOT NULL AND manufacturer is NOT NULL AND issue_date is NOT NULL AND model is NOT NULL AND status is NOT NULL AND aircraft_type is NOT NULL AND engine_type is NOT NULL AND year is NOT NULL")
+    println("--------------------------------- Done -----------------------------------------------")
+
+    // Renaming column "year" to "year_produced" in df_plane dataset
+    println("--------------------------------- Renaming column \"year\" to \"year_produced\" in df_plane dataset -----------------------------------------------")
+    df_plane = df_plane.withColumnRenamed("year","year_produced")
+    println("--------------------------------- Done -----------------------------------------------")
+
 
     // Therefore we eliminate the "CancellationCode" and "Cancelled" columns
     println("--------------------------------- Therefore we eliminate the \"CancellationCode\" and \"Cancelled\" columns -----------------------------------------------")
@@ -59,11 +63,23 @@ object Main {
     println("--------------------------------- Done -----------------------------------------------")
 
 
+    // We separate our target_variable from the rest of the dataset, saving it in a different one
+    var t_col = df.select("ArrDelay")
+    df = df.drop("ArrDelay")
+    println("--------------------------------- Target Variable -----------------------------------------------")
+    t_col.show
+
+
     // We check for null values in the "TailNum" column and swap them with "unknown"
     println("--------------------------------- We check for null values in the \"TailNum\" column and swap them with \"unknown\" -----------------------------------------------")
     spark.udf.register("replace_null_with_unknown", replace_null_with_unknown)
     spark.udf.register("replace_na_with_null", replace_na_with_null)
     df = df.withColumn("tailNum", replace_null_with_unknown(col("tailNum")))
+    println("--------------------------------- Done -----------------------------------------------")
+
+    // Join of the two datasets
+    println("--------------------------------- Joinig both datasets -----------------------------------------------")
+    df = df.join(df_plane, "tailNum")
     println("--------------------------------- Done -----------------------------------------------")
 
 
@@ -119,6 +135,8 @@ object Main {
     println("--------------------------------- Done -----------------------------------------------")
 */
 
+    println("--------------------------------- Processed Dataset -----------------------------------------------")
+    df.show
 
     // Declaration of the indexer that will transform entries to integer values
     val indexer = new StringIndexer().setInputCols(Array("UniqueCarrier", "tailNum", "Origin", "Dest")).setOutputCols(Array("UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed"))
@@ -136,8 +154,6 @@ object Main {
     println("--------------------------------- Done -----------------------------------------------")
     df = df.drop("UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed")
 
-    println("--------------------------------- Processed Dataset -----------------------------------------------")
-    df.show
 
 
   }
