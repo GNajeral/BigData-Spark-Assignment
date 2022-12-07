@@ -26,6 +26,14 @@ object Main {
     res
   })
 
+
+  private val replace_issueDate_with_planeAge = udf((x: Integer, y: String) => {
+    calendar.setTime(DateFormat.parse(y))
+    var year = calendar.get(Calendar.YEAR)
+    var res = x - year
+    res
+  })
+
   def main(args: Array[String]): Unit = {
     val spark = SparkSession
       .builder()
