@@ -1,6 +1,6 @@
 import org.apache.spark.ml.feature.{Imputer, OneHotEncoder, StringIndexer}
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.functions.{col, udf}
+import org.apache.spark.sql.functions.{col, length, udf}
 import org.apache.spark.sql.types.IntegerType
 
 import java.text.SimpleDateFormat
@@ -14,7 +14,7 @@ object Main {
 
   private val replace_null_with_unknown = udf((x: String) => {
     var res = new String
-    if (x == null || x == "Unknow") res = "unknown"
+    if (x == null || x == "Unknow" || x == "" || x == " ") res = "unknown"
     else res = x
     res
   })
@@ -51,9 +51,18 @@ object Main {
     df = df.filter("Cancelled == 0")
     println("--------------------------------- Done -----------------------------------------------")
 
+    df_plane = df_plane.filter("issue_date is NOT NULL OR issue_date NOT LIKE 'None'")
+    df_plane = df_plane.drop("status")
+
+
+    // We delete the "CRSDepTime" column given that we already have enough information with the "DepTime" and "DepDelay" columns
+    println("--------------------------------- We delete \"CRSDepTime\" -----------------------------------------------")
+    df = df.drop("CRSDepTime")
+    println("--------------------------------- Done -----------------------------------------------")
+
     // We delete the plane tailnumbers that dont have any data from plane-data dataset
     println("--------------------------------- We delete the plane tailnumbers that dont have any data from plane-data dataset -----------------------------------------------")
-    df_plane = df_plane.filter("type is NOT NULL AND manufacturer is NOT NULL AND issue_date is NOT NULL AND model is NOT NULL AND status is NOT NULL AND aircraft_type is NOT NULL AND engine_type is NOT NULL AND year is NOT NULL")
+    df_plane = df_plane.filter("type is NOT NULL AND manufacturer is NOT NULL AND issue_date is NOT NULL AND model is NOT NULL AND aircraft_type is NOT NULL AND engine_type is NOT NULL AND year is NOT NULL")
     println("--------------------------------- Done -----------------------------------------------")
 
 
@@ -82,7 +91,6 @@ object Main {
     spark.udf.register("replace_null_with_unknown", replace_null_with_unknown)
     spark.udf.register("replace_na_with_null", replace_na_with_null)
     spark.udf.register("replace_issueDate_with_planeAge", replace_issueDate_with_planeAge)
-    df = df.withColumn("tailNum", replace_null_with_unknown(col("tailNum")))
     println("--------------------------------- Done -----------------------------------------------")
 
     // Join of the two datasets
@@ -99,13 +107,12 @@ object Main {
     }
     println("--------------------------------- Done -----------------------------------------------")
 
-    df.show()
 
-    // Columns for mean imputer and most frequent imputer
-    //println("--------------------------------- Numerical columns to be transformed: -----------------------------------------------")
-    val cols_mean = Array("DepTime","CRSDepTime","CRSArrTime","CRSElapsedTime","DepDelay","Distance","TaxiOut")
-    val cols_mf = Array("Year","Month","DayofMonth","DayOfWeek","type")
-    //"type","engine_type","aircraft_type","model","issue_date","manufacturer"
+    // Numerical columns for mean imputer and most frequent imputer
+    println("--------------------------------- Numerical columns to be transformed: -----------------------------------------------")
+    val num_cols_mean = Array("DepTime","CRSArrTime","CRSElapsedTime","DepDelay","Distance","TaxiOut")
+    val num_cols_mf = Array("Year","Month","DayofMonth","DayOfWeek")
+
 
     // We cast to Integer every column in order to be able to use the imputer
     println("--------------------------------- We cast to Integer every column in order to be able to use the imputer -----------------------------------------------")
@@ -134,6 +141,16 @@ object Main {
     println("--------------------------------- Done -----------------------------------------------")
 
 
+    // Categorical columns from the plane-data.csv for mean imputer and most frequent imputer
+    println("--------------------------------- Imputing unknown value for nulls in categorical variables -----------------------------------------------")
+    val cat_cols_df = Array("tailNum", "Dest", "Origin", "type", "engine_type", "aircraft_type", "model", "issue_date", "manufacturer")
+    for (i <- 0 until cat_cols_df.length) {
+      val column = cat_cols_df(i)
+      df = df.withColumn(column, replace_null_with_unknown(col(column)))
+    }
+    println("--------------------------------- Done -----------------------------------------------")
+
+
     // We create the column "PlaneAge" from the data in "Year" and "issue_date", to then remove the column "issue_date"
     println("--------------------------------- We create the column \"PlaneAge\" from the data in \"Year\" and \"issue_date\", to then remove the column \"issue_date\" -----------------------------------------------")
     df = df.withColumn("issue_date", replace_issueDate_with_planeAge(col("Year"), col("issue_date")))
@@ -154,22 +171,40 @@ object Main {
     println("--------------------------------- Processed Dataset -----------------------------------------------")
     df.show()
 
+    // We check for missing numerical values in the each column of the dataset
+    println("--------------------------------- We check for missing numerical values in the each column of the dataset -----------------------------------------------")
+    val plane_cols_mf = Array("type", "engine_type", "aircraft_type", "model", "manufacturer")
+    for (i <- 0 until plane_cols_mf.length) {
+      val column = plane_cols_mf(i)
+      println(column)
+      //df.filter(col(column).contains("NA")).show()
+      df.filter(column + " is NULL OR " + column + " LIKE 'None'").show()
+    }
+    println("--------------------------------- Done -----------------------------------------------")
+
+
 
     // Declaration of the indexer that will transform entries to integer values
-    val indexer = new StringIndexer().setInputCols(Array("UniqueCarrier", "tailNum", "Origin", "Dest")).setOutputCols(Array("UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed"))
+    val indexer = new StringIndexer().setInputCols(Array("UniqueCarrier", "tailNum", "Origin", "Dest", "type", "manufacturer", "model", "aircraft_type", "engine_type")).setOutputCols(Array("UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed", "typeIndexed", "manufacturerIndexed", "modelIndexed", "aircraft_typeIndexed", "engine_typeIndexed"))
 
 
     // Declaration of the one hot encoder that will process the categorical variables
-    val ohe = new OneHotEncoder().setInputCols(Array("UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed")).setOutputCols(Array("UniqueCarrier", "tailNum", "Origin", "Dest"))
+    val ohe = new OneHotEncoder().setInputCols(Array("UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed", "typeIndexed", "manufacturerIndexed", "modelIndexed", "aircraft_typeIndexed", "engine_typeIndexed")).setOutputCols(Array("UniqueCarrier", "tailNum", "Origin", "Dest", "type", "manufacturer", "model", "aircraft_type", "engine_type"))
 
     println("--------------------------------- Indexing Dataset -----------------------------------------------")
     df = indexer.fit(df).transform(df)
+    df = df.drop("UniqueCarrier", "tailNum", "Origin", "Dest", "type", "manufacturer", "model", "aircraft_type", "engine_type")
     println("--------------------------------- Done -----------------------------------------------")
-    df = df.drop("UniqueCarrier", "tailNum", "Origin", "Dest")
+
+
     println("--------------------------------- Applying One Hot Encoder -----------------------------------------------")
     df = ohe.fit(df).transform(df)
+    df = df.drop("UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed", "typeIndexed", "manufacturerIndexed", "modelIndexed", "aircraft_typeIndexed", "engine_typeIndexed")
     println("--------------------------------- Done -----------------------------------------------")
-    df = df.drop("UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed")
+
+
+    println("--------------------------------- Preprocessed Dataset -----------------------------------------------")
+    df.show()
 
 
 
