@@ -1,6 +1,6 @@
 import org.apache.spark.ml.feature.{Imputer, OneHotEncoder, StringIndexer}
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.functions.{col, length, udf}
+import org.apache.spark.sql.functions.{col, udf}
 import org.apache.spark.sql.types.IntegerType
 
 import java.text.SimpleDateFormat
@@ -9,8 +9,8 @@ import java.util.{Calendar, GregorianCalendar}
 
 
 object Main {
-  val DateFormat = new SimpleDateFormat("MM/dd/yyyy")
-  val calendar = new GregorianCalendar()
+  private val DateFormat = new SimpleDateFormat("MM/dd/yyyy")
+  private val calendar = new GregorianCalendar()
 
   private val replace_null_with_unknown = udf((x: String) => {
     var res = new String
@@ -28,8 +28,8 @@ object Main {
 
   private val replace_issueDate_with_planeAge = udf((x: Integer, y: String) => {
     calendar.setTime(DateFormat.parse(y))
-    var year = calendar.get(Calendar.YEAR)
-    var res = x - year
+    val year = calendar.get(Calendar.YEAR)
+    val res = x - year
     res
   })
 
@@ -88,7 +88,7 @@ object Main {
 
 
     // We separate our target_variable from the rest of the dataset, saving it in a different one
-    var t_col = df.select("ArrDelay")
+    val t_col = df.select("ArrDelay")
     df = df.drop("ArrDelay")
     println("--------------------------------- Target Variable -----------------------------------------------")
     t_col.show
