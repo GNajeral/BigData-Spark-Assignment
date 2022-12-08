@@ -14,7 +14,7 @@ object Main {
 
   private val replace_null_with_unknown = udf((x: String) => {
     var res = new String
-    if (x == null || x == "Unknow" || x == "" || x == " ") res = "unknown"
+    if (x == null || x == "Unknow" || x == "None" || x == "" || x == " ") res = "unknown"
     else res = x
     res
   })
