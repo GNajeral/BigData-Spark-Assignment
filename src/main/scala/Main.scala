@@ -82,6 +82,29 @@ object Main {
     println()
 
 
+    // We separate our target variable from the rest of the dataset, saving it in a different one
+    println("--------------------------------- We separate the target variable -----------------------------------------------")
+    val t_col = df.select("ArrDelay")
+    df = df.drop("ArrDelay")
+    t_col.show()
+    println("--------------------------------- Done -----------------------------------------------")
+    println()
+
+
+    // We filter the columns that can not possess negative values
+    println("--------------------------------- We filter the columns that can not possess negative values -----------------------------------------------")
+    df = df.filter("Year > 0")
+    df = df.filter("Month > 0")
+    df = df.filter("DayofMonth > 0")
+    df = df.filter("DayOfWeek > 0")
+    df = df.filter("DepTime > 0")
+    df = df.filter("CRSArrTime > 0")
+    df = df.filter("Distance > 0")
+    df = df.filter("TaxiOut > 0")
+    println("--------------------------------- Done -----------------------------------------------")
+    println()
+
+
     // We delete all the rows that contain cancelled flights, since this will not be useful for our prediction goal
     println("--------------------------------- We delete all the rows that contain cancelled flights -----------------------------------------------")
     df = df.filter("Cancelled == 0")
