@@ -33,12 +33,31 @@ object Main {
     res
   })
 
+  private val replace_time_with_dayPart = udf((x: Integer) => {
+    var res = new String
+    if(x > 0 && x < 500) res = "lateNight"
+    if(x >= 500 && x < 800) res = "earlyMorning"
+    if(x >= 800 && x < 1200) res = "lateMorning"
+    if(x >= 1200 && x < 1400) res = "earlyAfternoon"
+    if(x >= 1400 && x < 1700) res = "lateAfternoon"
+    if(x >= 1700 && x < 1900) res = "earlyEvening"
+    if(x >= 1900 && x < 2100) res = "lateEvening"
+    if(x >= 2100 && x <= 2400) res = "earlyNight"
+    res
+  })
+
+  private val replace_YMD_with_FlightDate = udf((year: Integer, month: Integer, day: Integer) => {
+    var res = month.toString + "/" + day.toString + "/" + year.toString
+    res
+  })
+
   def main(args: Array[String]): Unit = {
 
     val spark = SparkSession
       .builder()
       .appName("Java Spark SQL 2008 dataset")
-      .config("spark.master", "local")
+      .master("local[12]")
+      .config("spark.driver.memory","16G")
       .getOrCreate()
 
     spark.sparkContext.setLogLevel("ERROR")
@@ -51,6 +70,7 @@ object Main {
     spark.udf.register("replace_null_with_unknown", replace_null_with_unknown)
     spark.udf.register("replace_na_with_null", replace_na_with_null)
     spark.udf.register("replace_issueDate_with_planeAge", replace_issueDate_with_planeAge)
+    spark.udf.register("replace_time_with_dayPart", replace_time_with_dayPart)
 
 
     // We delete the forbidden columns
@@ -83,11 +103,9 @@ object Main {
     println()
 
 
-    // We separate our target variable from the rest of the dataset, saving it in a different one
-    println("--------------------------------- We separate the target variable -----------------------------------------------")
-    val t_col = df.select("ArrDelay")
-    df = df.drop("ArrDelay")
-    t_col.show()
+    // We delete the "CRSElapsedTime" column since this variable seems to give the same information as the "Distance" column (higher distance, higher estimated time and vice versa)
+    println("--------------------------------- We delete the \"CRSElapsedTime\" column -----------------------------------------------")
+    df = df.drop("CRSElapsedTime")
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
@@ -134,7 +152,7 @@ object Main {
 
 
     // Numerical columns for "mean" imputer and "most frequent" imputer
-    val num_cols_mean = Array("DepTime","CRSArrTime","CRSElapsedTime","DepDelay","Distance","TaxiOut")
+    val num_cols_mean = Array("DepTime","CRSArrTime","DepDelay","Distance","TaxiOut")
     val num_cols_mf = Array("Year","Month","DayofMonth","DayOfWeek")
 
 
@@ -161,9 +179,17 @@ object Main {
 
 
     // We apply the "mean" imputer for the rest of the numerical columns
-    println("--------------------------------- We apply the \"mean\" imputer for the \"DepTime\",\"CRSDepTime\",\"CRSArrTime\",\"CRSElapsedTime\",\"DepDelay\",\"Distance\" and \"TaxiOut\" columns -----------------------------------------------")
+    println("--------------------------------- We apply the \"mean\" imputer for the \"DepTime\",\"CRSDepTime\",\"CRSArrTime\",\"DepDelay\",\"Distance\" and \"TaxiOut\" columns -----------------------------------------------")
     imputer.setInputCols(num_cols_mean).setOutputCols(num_cols_mean).setStrategy("mean")
     df = imputer.fit(df).transform(df)
+    println("--------------------------------- Done -----------------------------------------------")
+    println()
+
+
+    // We change the value of "DepTime" and "CRSArrTime" to strings containing values such as morning, night... in order to apply one hot encoder more efficiently
+    println("--------------------------------- We change the value of \"DepTime\" and \"CRSArrTime\" -----------------------------------------------")
+    df = df.withColumn("DepTime", replace_time_with_dayPart(col("DepTime")))
+    df = df.withColumn("CRSArrTime", replace_time_with_dayPart(col("CRSArrTime")))
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
@@ -188,24 +214,40 @@ object Main {
     println()
 
 
+    // We swap columns "Year", "Month" and "DayOfMonth" with a new column "Date" so we avoid one hot encoding the "Year" column which can have only one value
+    println("--------------------------------- We swap columns \"Year\", \"month\" and \"DayOfMonth\" with a new column \"Date\" so we avoid one hot encoding the \"Year\" column which can have only one value -----------------------------------------------")
+    df = df.withColumn("Year", replace_YMD_with_FlightDate(col("Year"), col("Month"), col("DayOfMonth")))
+    df = df.withColumnRenamed("Year", "FlightDate")
+    df = df.drop("Month").drop("DayOfMonth")
+    println("--------------------------------- Done -----------------------------------------------")
+    println()
+
+
     println("--------------------------------- 1st Preprocessed Dataset -----------------------------------------------")
     df.show()
 
 
-    df.repartition(1).write.option("header",value = true).mode(SaveMode.Overwrite).csv("src/main/resources/output")
+    //df.repartition(1).write.option("header",value = true).mode(SaveMode.Overwrite).csv("src/main/resources/output")
 
 
+    val columns_to_index = Array("FlightDate", "DayOfWeek", "DepTime", "CRSArrTime", "UniqueCarrier", "tailNum", "Origin", "Dest", "type", "manufacturer", "model", "aircraft_type", "engine_type")
+    val indexed_columns = Array("FlightDateIndexed", "DayOfWeekIndexed", "DepTimeIndexed", "CRSArrTimeIndexed", "UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed", "typeIndexed", "manufacturerIndexed", "modelIndexed", "aircraft_typeIndexed", "engine_typeIndexed")
+    val cat_cols = Array("FlightDateCat", "DayOfWeekCat", "DepTimeCat", "CRSArrTimeCat", "UniqueCarrierCat", "tailNumCat", "OriginCat", "DestCat", "typeCat", "manufacturerCat", "modelCat", "aircraft_typeCat", "engine_typeCat")
 
     // Declaration of the indexer that will transform entries to integer values
     println("--------------------------------- Declaration of the indexer that will transform entries to integer values -----------------------------------------------")
-    val indexer = new StringIndexer().setInputCols(Array("UniqueCarrier", "tailNum", "Origin", "Dest", "type", "manufacturer", "model", "aircraft_type", "engine_type")).setOutputCols(Array("UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed", "typeIndexed", "manufacturerIndexed", "modelIndexed", "aircraft_typeIndexed", "engine_typeIndexed"))
+    val indexer = new StringIndexer()
+      .setInputCols(columns_to_index)
+      .setOutputCols(indexed_columns)
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
 
     // Declaration of the one hot encoder that will process the categorical variables
     println("--------------------------------- Declaration of the one hot encoder that will process the categorical variables -----------------------------------------------")
-    val ohe = new OneHotEncoder().setInputCols(Array("UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed", "typeIndexed", "manufacturerIndexed", "modelIndexed", "aircraft_typeIndexed", "engine_typeIndexed")).setOutputCols(Array("UniqueCarrier", "tailNum", "Origin", "Dest", "type", "manufacturer", "model", "aircraft_type", "engine_type"))
+    val ohe = new OneHotEncoder()
+      .setInputCols(indexed_columns)
+      .setOutputCols(cat_cols)
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
@@ -213,7 +255,6 @@ object Main {
     // Indexing Dataset
     println("--------------------------------- Indexing Dataset -----------------------------------------------")
     df = indexer.fit(df).transform(df)
-    df = df.drop("UniqueCarrier", "tailNum", "Origin", "Dest", "type", "manufacturer", "model", "aircraft_type", "engine_type")
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
@@ -221,10 +262,11 @@ object Main {
     // We apply the One Hot Encoder to the dataset
     println("--------------------------------- Applying One Hot Encoder -----------------------------------------------")
     df = ohe.fit(df).transform(df)
-    df = df.drop("UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed", "typeIndexed", "manufacturerIndexed", "modelIndexed", "aircraft_typeIndexed", "engine_typeIndexed")
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
+    //df = df.drop(indexed_columns:_*)
+    //df = df.drop(columns_to_index:_*)
 
     println("--------------------------------- Final Preprocessed Dataset -----------------------------------------------")
     df.show()
