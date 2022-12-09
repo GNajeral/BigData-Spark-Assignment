@@ -120,7 +120,7 @@ object Main {
 
 
     // We delete the "CRSDepTime" column given that we already have enough information with the "DepTime" and "DepDelay" columns
-    println("--------------------------------- We delete \"CRSDepTime\" -----------------------------------------------")
+    println("--------------------------------- We delete the \"CRSDepTime\" column -----------------------------------------------")
     df = df.drop("CRSDepTime")
     println("--------------------------------- Done -----------------------------------------------")
     println()
@@ -293,6 +293,11 @@ object Main {
 
     println("--------------------------------- Final Preprocessed Dataset -----------------------------------------------")
     df.show()
+
+
+
+
+
   }
 }
 
