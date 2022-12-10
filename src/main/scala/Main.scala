@@ -482,7 +482,7 @@ object Main {
     val summaryDF = Seq(
       ("LINEAR REGRESSION", linearRegression_evaluator_rmse.evaluate(linearRegression_predictions), linearRegression_evaluator_r2.evaluate(linearRegression_predictions)),
       ("DECISION TREE REGRESSION - False Positive Rate Selection", randomForestRegressor_evaluator_rmse.evaluate(dtr_predictions_fpr), randomForestRegressor_evaluator_r2.evaluate(dtr_predictions_fpr)),
-      ("RANDOM FOREST REGRESSION - False Positive Rate Selection", randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions), randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)),
+      ("RANDOM FOREST REGRESSION - False Positive Rate Selection", randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions), randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)))
       .toDF("Algorithm", "RMSE", "R2")
 
     summaryDF.show(false)
