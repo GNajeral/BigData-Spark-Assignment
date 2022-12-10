@@ -319,6 +319,7 @@ object Main {
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
+
     val columns_to_index = Array("FlightDate", "DayOfWeek", "DepTime", "CRSArrTime", "UniqueCarrier", "tailNum", "Origin", "Dest", "type", "manufacturer", "issue_date", "model", "aircraft_type", "engine_type")
     val indexed_columns = Array("FlightDateIndexed", "DayOfWeekIndexed", "DepTimeIndexed", "CRSArrTimeIndexed", "UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed", "typeIndexed", "manufacturerIndexed", "issue_dateIndexed", "modelIndexed", "aircraft_typeIndexed", "engine_typeIndexed")
     val cat_cols = Array("FlightDateCat", "DayOfWeekCat", "DepTimeCat", "CRSArrTimeCat", "UniqueCarrierCat", "tailNumCat", "OriginCat", "DestCat", "typeCat", "manufacturerCat", "issue_dateCat", "modelCat", "aircraft_typeCat", "engine_typeCat")
