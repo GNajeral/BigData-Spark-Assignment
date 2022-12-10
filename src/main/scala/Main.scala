@@ -55,10 +55,9 @@ object Main {
   private val replace_YMD_with_FlightDate = udf((year: Integer, month: Integer, day: Integer) => {
     var res = month.toString + "/" + day.toString + "/" + year.toString
     res
-  })
+  }).asNondeterministic()
 
   def main(args: Array[String]): Unit = {
-
     val spark = SparkSession
       .builder()
       .appName("Java Spark SQL 2008 dataset")
@@ -194,7 +193,7 @@ object Main {
 
     // We delete the plane tailnumbers that do not have any data from plane-data dataset
     println("--------------------------------- We delete the plane tailnumbers that do not have any data from plane-data dataset -----------------------------------------------")
-    df_plane = df_plane.filter("type is NOT NULL AND manufacturer is NOT NULL AND issue_date is NOT NULL AND model is NOT NULL AND aircraft_type is NOT NULL AND engine_type is NOT NULL AND year is NOT NULL")
+    df_plane = df_plane.filter("type is NOT NULL AND manufacturer is NOT NULL AND model is NOT NULL AND aircraft_type is NOT NULL AND engine_type is NOT NULL AND year is NOT NULL")
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
