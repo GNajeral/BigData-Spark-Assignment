@@ -1,7 +1,7 @@
 import org.apache.spark.ml.Pipeline
 import org.apache.spark.ml.evaluation.RegressionEvaluator
 import org.apache.spark.ml.feature.{Imputer, Normalizer, OneHotEncoder, StringIndexer, VectorAssembler}
-import org.apache.spark.ml.regression.LinearRegression
+import org.apache.spark.ml.regression.{DecisionTreeRegressor, LinearRegression, RandomForestRegressor}
 import org.apache.spark.ml.tuning.{CrossValidator, ParamGridBuilder}
 import org.apache.spark.sql.{SaveMode, SparkSession}
 import org.apache.spark.sql.functions.{col, udf}
@@ -314,8 +314,8 @@ object Main {
 
     //df.repartition(1).write.option("header",value = true).mode(SaveMode.Overwrite).csv("src/main/resources/output")
 
-    println("--------------------------------- Variance of FlightDate -----------------------------------------------")
-    println(df.stat.corr("DepTime", "DepTime"))
+    println("--------------------------------- Variance of DepDelay -----------------------------------------------")
+    println(df.stat.cov("DepDelay", "DepDelay"))
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
@@ -401,23 +401,91 @@ object Main {
 
     val linearRegressionModel = linearRegression_cv.fit(trainingData)
 
-//    //println(s"Coefficients: ${linearRegressionModel.coefficients}")
-//    println(s"Intercept: ${linearRegressionModel.intercept}")
-//    val trainingSummary = linearRegressionModel.summary
-//    println(s"numIterations: ${trainingSummary.totalIterations}")
-//    println(s"objectiveHistory: ${ trainingSummary.objectiveHistory.toList }")
-//    trainingSummary.residuals.show()
-//    println(s"RMSE: ${trainingSummary.rootMeanSquaredError}")
-//    println(s"r2: ${trainingSummary.r2}")
-
     println("Model parameters:")
     println(linearRegressionModel.bestModel.extractParamMap())
-    val lr_predictions_fpr = linearRegressionModel.transform(testData)
+    val linearRegression_predictions = linearRegressionModel.transform(testData)
     println("ArrDelay VS predictionLR:")
-    lr_predictions_fpr.select("ArrDelay", "predictionLR").show(10, false)
-    println(s"Root Mean Squared Error = ${linearRegression_evaluator_rmse.evaluate(lr_predictions_fpr)}")
-    println(s"R-Squared = ${linearRegression_evaluator_r2.evaluate(lr_predictions_fpr)}")
+    linearRegression_predictions.select("ArrDelay", "predictionLR").show(10, false)
+    println(s"Root Mean Squared Error = ${linearRegression_evaluator_rmse.evaluate(linearRegression_predictions)}")
+    println(s"R-Squared = ${linearRegression_evaluator_r2.evaluate(linearRegression_predictions)}")
 
+    //-------------------DecisionTreeRegression-----------------------------------------
+    val decissionTreeRegression = new DecisionTreeRegressor()
+      .setLabelCol("ArrDelay")
+      .setFeaturesCol("normFeatures")
+      .setPredictionCol("predictionDTR")
+
+    val decissionTreeRegression_evaluator_rmse = new RegressionEvaluator()
+      .setLabelCol("ArrDelay")
+      .setPredictionCol("predictionDTR")
+      .setMetricName("rmse")
+
+    val decissionTreeRegression_evaluator_r2 = new RegressionEvaluator()
+      .setLabelCol("ArrDelay")
+      .setPredictionCol("predictionDTR")
+      .setMetricName("r2")
+
+    val decissionTreeRegression_cv = new CrossValidator()
+      .setEstimator(decissionTreeRegression)
+      .setEvaluator(decissionTreeRegression_evaluator_rmse)
+      .setEstimatorParamMaps(new ParamGridBuilder().build())
+      .setNumFolds(3)
+      .setParallelism(3)
+
+
+    println("------------------------- Decision Tree Regression -------------------------")
+    val decissionTree_model = decissionTreeRegression_cv.fit(trainingData)
+    println("Model parameters:")
+    println(decissionTree_model.bestModel.extractParamMap())
+    val dtr_predictions_fpr = decissionTree_model.transform(testData)
+    println("ArrDelay VS predictionDTR:")
+    dtr_predictions_fpr.select("ArrDelay", "predictionDTR").show(10, false)
+    println(s"Root Mean Squared Error = ${decissionTreeRegression_evaluator_rmse.evaluate(dtr_predictions_fpr)}")
+    println(s"R-Squared = ${decissionTreeRegression_evaluator_r2.evaluate(dtr_predictions_fpr)}")
+
+
+    //-------------------RandomForestRegression-----------------------------------------
+    val randomForestRegressor = new RandomForestRegressor()
+      .setLabelCol("ArrDelay")
+      .setFeaturesCol("normFeatures")
+      .setPredictionCol("predictionRFR")
+
+    val randomForestRegressor_evaluator_rmse = new RegressionEvaluator()
+      .setLabelCol("ArrDelay")
+      .setPredictionCol("predictionRFR")
+      .setMetricName("rmse")
+
+    val randomForestRegressor_evaluator_r2 = new RegressionEvaluator()
+      .setLabelCol("ArrDelay")
+      .setPredictionCol("predictionRFR")
+      .setMetricName("r2")
+
+    val randomForestRegressor_cv = new CrossValidator()
+      .setEstimator(randomForestRegressor)
+      .setEvaluator(randomForestRegressor_evaluator_rmse)
+      .setEstimatorParamMaps(new ParamGridBuilder().build())
+      .setNumFolds(3)
+      .setParallelism(3)
+
+    println("------------------------Random Forest Regression FPR-------------------------")
+    val randomForestRegressor_model_fpr = randomForestRegressor_cv.fit(trainingData)
+    println("Model parameters:")
+    println(randomForestRegressor_model_fpr.bestModel.extractParamMap())
+    val randomForestRegressor_predictions = randomForestRegressor_model_fpr.transform(testData)
+    println("ArrDelay VS predictionRFR:")
+    randomForestRegressor_predictions.select("selectedFeatures", "ArrDelay", "predictionRFR").show(10, false)
+    println(s"Root Mean Squared Error = ${randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions)}")
+    println(s"R-Squared = ${randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)}")
+
+
+    println("------------------------Summary-------------------------")
+    val summaryDF = Seq(
+      ("LINEAR REGRESSION", linearRegression_evaluator_rmse.evaluate(linearRegression_predictions), linearRegression_evaluator_r2.evaluate(linearRegression_predictions)),
+      ("DECISION TREE REGRESSION - False Positive Rate Selection", randomForestRegressor_evaluator_rmse.evaluate(dtr_predictions_fpr), randomForestRegressor_evaluator_r2.evaluate(dtr_predictions_fpr)),
+      ("RANDOM FOREST REGRESSION - False Positive Rate Selection", randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions), randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)),
+      .toDF("Algorithm", "RMSE", "R2")
+
+    summaryDF.show(false)
 
   }
 }
