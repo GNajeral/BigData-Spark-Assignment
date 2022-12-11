@@ -1,7 +1,11 @@
-import org.apache.spark.ml.feature.{Imputer, OneHotEncoder, StringIndexer}
+import org.apache.spark.ml.Pipeline
+import org.apache.spark.ml.evaluation.RegressionEvaluator
+import org.apache.spark.ml.feature.{Imputer, Normalizer, OneHotEncoder, StringIndexer, VectorAssembler}
+import org.apache.spark.ml.regression.{DecisionTreeRegressor, LinearRegression, RandomForestRegressor}
+import org.apache.spark.ml.tuning.{CrossValidator, ParamGridBuilder}
 import org.apache.spark.sql.{SaveMode, SparkSession}
 import org.apache.spark.sql.functions.{col, udf}
-import org.apache.spark.sql.types.IntegerType
+import org.apache.spark.sql.types.{IntegerType, StringType, StructType}
 
 import java.text.SimpleDateFormat
 import java.util.{Calendar, GregorianCalendar}
@@ -17,21 +21,23 @@ object Main {
     if (x == null || x == "Unknow" || x == "None" || x == "" || x == " ") res = "unknown"
     else res = x
     res
-  })
+  }).asNondeterministic()
 
   private val replace_na_with_null = udf((x: String) => {
     var res = new String
     if (x == "NA") res = null
     else res = x
     res
-  })
+  }).asNondeterministic()
 
-  private val replace_issueDate_with_planeAge = udf((x: Integer, y: String) => {
-    calendar.setTime(DateFormat.parse(y))
-    val year = calendar.get(Calendar.YEAR)
-    val res = x - year
-    res
-  })
+//  private val replace_issueDate_with_planeAge = udf((x: String, y: String) => {
+//    calendar.setTime(DateFormat.parse(y))
+//    val yearIssued = calendar.get(Calendar.YEAR)
+//    calendar.setTime(DateFormat.parse(x))
+//    val flightYear = calendar.get(Calendar.YEAR)
+//    val PlaneAge = flightYear - yearIssued
+//    PlaneAge
+//  }).asNondeterministic()
 
   private val replace_time_with_dayPart = udf((x: Integer) => {
     var res = new String
@@ -44,15 +50,14 @@ object Main {
     if(x >= 1900 && x < 2100) res = "lateEvening"
     if(x >= 2100 && x <= 2400) res = "earlyNight"
     res
-  })
+  }).asNondeterministic()
 
   private val replace_YMD_with_FlightDate = udf((year: Integer, month: Integer, day: Integer) => {
     var res = month.toString + "/" + day.toString + "/" + year.toString
     res
-  })
+  }).asNondeterministic()
 
   def main(args: Array[String]): Unit = {
-
     val spark = SparkSession
       .builder()
       .appName("Java Spark SQL 2008 dataset")
@@ -62,15 +67,54 @@ object Main {
 
     spark.sparkContext.setLogLevel("ERROR")
 
-    // We read the input data
-    var df = spark.read.option("header",value = true).csv("src/main/resources/2008.csv")
-    var df_plane = spark.read.option("header",value = true).csv("src/main/resources/plane-data.csv")
+    import spark.implicits._
 
-    // We register several UDFs that are going to be used
-    spark.udf.register("replace_null_with_unknown", replace_null_with_unknown)
-    spark.udf.register("replace_na_with_null", replace_na_with_null)
-    spark.udf.register("replace_issueDate_with_planeAge", replace_issueDate_with_planeAge)
-    spark.udf.register("replace_time_with_dayPart", replace_time_with_dayPart)
+//    val schema = new StructType()
+//      .add("Year", IntegerType, true)
+//      .add("Month", IntegerType, true)
+//      .add("DayofMonth", IntegerType, true)
+//      .add("DayOfWeek", IntegerType, true)
+//      .add("DepTime", IntegerType, true)
+//      .add("CRSDepTime", IntegerType, true)
+//      .add("ArrTime", IntegerType, true)
+//      .add("CRSArrTime", IntegerType, true)
+//      .add("UniqueCarrier", StringType, true)
+//      .add("FlightNum", IntegerType, true)
+//      .add("TailNum", StringType, true)
+//      .add("ActualElapsedTime", IntegerType, true)
+//      .add("CRSElapsedTime", IntegerType, true)
+//      .add("AirTime", IntegerType, true)
+//      .add("ArrDelay", IntegerType, true)
+//      .add("DepDelay", IntegerType, true)
+//      .add("Origin", StringType, true)
+//      .add("Dest", StringType, true)
+//      .add("Distance", IntegerType, true)
+//      .add("TaxiIn", IntegerType, true)
+//      .add("TaxiOut", IntegerType, true)
+//      .add("Cancelled", IntegerType, true)
+//      .add("CancellationCode", StringType, true)
+//      .add("Diverted", IntegerType, true)
+//      .add("CarrierDelay", IntegerType, true)
+//      .add("WeatherDelay", IntegerType, true)
+//      .add("NASDelay", IntegerType, true)
+//      .add("SecurityDelay", IntegerType, true)
+//      .add("LateAircraftDelay", IntegerType, true)
+//
+//    val schema2 = new StructType()
+//      .add("tailNum", StringType, true)
+//      .add("type", StringType, true)
+//      .add("manufacturer", StringType, true)
+//      .add("issue_date", StringType, true)
+//      .add("model", StringType, true)
+//      .add("status", StringType, true)
+//      .add("aircraft_type", StringType, true)
+//      .add("engine_type", StringType, true)
+//      .add("year", IntegerType, true)
+
+
+    // We read the input data
+    var df = spark.read.options(Map("header" -> "true", "nanValue" -> "NA")).csv("src/main/resources/2008.csv")
+    var df_plane = spark.read.options(Map("header" -> "true", "nanValue" -> "NA")).csv("src/main/resources/plane-data.csv")
 
 
     // We delete the forbidden columns
@@ -82,11 +126,16 @@ object Main {
     println()
 
 
+    // We delete the null values of the target variable as we are not going to use that values
+    println("--------------------------------- We delete the null values of \"ArrDelay\" -----------------------------------------------")
+    df = df.filter("ArrDelay is NOT NULL AND ArrDelay NOT LIKE 'NA'")
+    println("--------------------------------- Done -----------------------------------------------")
+    println()
+
+
     // We separate our target variable from the rest of the dataset, saving it in a different one
-    println("--------------------------------- We separate the target variable -----------------------------------------------")
-    val t_col = df.select("ArrDelay")
-    df = df.drop("ArrDelay")
-    t_col.show()
+    println("--------------------------------- target variable -----------------------------------------------")
+    println("'ArrDelay'")
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
@@ -144,7 +193,7 @@ object Main {
 
     // We delete the plane tailnumbers that do not have any data from plane-data dataset
     println("--------------------------------- We delete the plane tailnumbers that do not have any data from plane-data dataset -----------------------------------------------")
-    df_plane = df_plane.filter("type is NOT NULL AND manufacturer is NOT NULL AND issue_date is NOT NULL AND model is NOT NULL AND aircraft_type is NOT NULL AND engine_type is NOT NULL AND year is NOT NULL")
+    df_plane = df_plane.filter("type is NOT NULL AND manufacturer is NOT NULL AND model is NOT NULL AND aircraft_type is NOT NULL AND engine_type is NOT NULL AND year is NOT NULL")
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
@@ -166,7 +215,7 @@ object Main {
 
     // We check for NA values in the each column of the dataset and set them to null for the imputers to do their work
     println("--------------------------------- Checking for NA values in the dataset to set them to null -----------------------------------------------")
-    for (i <- 0 until df.columns.length) {
+    for (i <- 0 until df.columns.drop(df.columns.indexOf("ArrDelay")).length) {
       val column = df.columns(i)
       df = df.withColumn(column, replace_na_with_null(col(column)))
     }
@@ -176,14 +225,14 @@ object Main {
 
     // Numerical columns for "mean" imputer and "most frequent" imputer
     val num_cols_mean = Array("DepTime","CRSArrTime","DepDelay","Distance","TaxiOut")
-    val num_cols_mf = Array("Year","Month","DayofMonth","DayOfWeek")
+    val num_cols_mf = Array("FlightNum", "Year","Month","DayofMonth","DayOfWeek")
 
 
     // We cast to Integer every column in order to be able to use the imputer
     println("--------------------------------- We cast to Integer every column in order to be able to use the imputer -----------------------------------------------")
     for (i <- 0 until df.columns.length){
       val colName = df.columns(i)
-      if (num_cols_mean.contains(colName) || num_cols_mf.contains(colName))
+      if (num_cols_mean.contains(colName) || num_cols_mf.contains(colName) || colName == "ArrDelay")
         df = df.withColumn(colName,col(colName).cast(IntegerType))
     }
     println("--------------------------------- Done -----------------------------------------------")
@@ -227,15 +276,6 @@ object Main {
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
-    df.filter("issue_date is NULL OR issue_date LIKE 'unknown'").show()
-
-    // We create the column "PlaneAge" from the data in "Year" and "issue_date" to then remove the column "issue_date"
-    println("--------------------------------- We create the column \"PlaneAge\" from the data in \"Year\" and \"issue_date\" to then remove the column \"issue_date\" -----------------------------------------------")
-    df = df.withColumn("issue_date", replace_issueDate_with_planeAge(col("Year"), col("issue_date")))
-    df = df.withColumnRenamed("issue_date", "PlaneAge")
-    println("--------------------------------- Done -----------------------------------------------")
-    println()
-
 
     // We swap columns "Year", "Month" and "DayOfMonth" with a new column "Date" so we avoid one hot encoding the "Year" column which can have only one value
     println("--------------------------------- We swap columns \"Year\", \"month\" and \"DayOfMonth\" with a new column \"Date\" so we avoid one hot encoding the \"Year\" column which can have only one value -----------------------------------------------")
@@ -246,16 +286,43 @@ object Main {
     println()
 
 
-    println("--------------------------------- 1st Preprocessed Dataset -----------------------------------------------")
-    df.show()
+//    df = df.map(row => {
+//      calendar.setTime(DateFormat.parse(row.getString(15)))
+//      val yearIssued = calendar.get(Calendar.YEAR)
+//      calendar.setTime(DateFormat.parse(row.getString(1)))
+//      val flightYear = calendar.get(Calendar.YEAR)
+//      val PlaneAge = flightYear - yearIssued
+//      (row.getString(0), row.getString(1), row.getInt(2), row.getString(3), row.getString(4), row.getString(5), row.getInt(6), row.getInt(7), row.getInt(8), row.getString(9), row.getString(10), row.getInt(11), row.getInt(12), row.getString(13), row.getString(14), PlaneAge, row.getString(16), row.getString(17), row.getString(18))
+//    }).toDF(df.columns:_*).cache()
+//    df.count()
+
+
+//    // We create the column "PlaneAge" from the data in "Year" and "issue_date" to then remove the column "issue_date"
+//    println("--------------------------------- We create the column \"PlaneAge\" from the data in \"Year\" and \"issue_date\" to then remove the column \"issue_date\" -----------------------------------------------")
+//    df = df.withColumnRenamed("issue_date", "PlaneAge")
+//    df = df.withColumn("PlaneAge", replace_issueDate_with_planeAge(col("FlightDate"), col("PlaneAge")).cast(IntegerType))
+//    println("--------------------------------- Done -----------------------------------------------")
+//    println()
+//    df.show()
+
+
+//    for (i <- 0 until df.columns.length) {
+//      println(df.columns(i))
+//      df.filter(df.columns(i) + " LIKE 'E20074'").show()
+//    }
 
 
     //df.repartition(1).write.option("header",value = true).mode(SaveMode.Overwrite).csv("src/main/resources/output")
 
+    println("--------------------------------- Variance of DepDelay -----------------------------------------------")
+    println(df.stat.cov("DepDelay", "DepDelay"))
+    println("--------------------------------- Done -----------------------------------------------")
+    println()
 
-    val columns_to_index = Array("FlightDate", "DayOfWeek", "DepTime", "CRSArrTime", "UniqueCarrier", "tailNum", "Origin", "Dest", "type", "manufacturer", "model", "aircraft_type", "engine_type")
-    val indexed_columns = Array("FlightDateIndexed", "DayOfWeekIndexed", "DepTimeIndexed", "CRSArrTimeIndexed", "UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed", "typeIndexed", "manufacturerIndexed", "modelIndexed", "aircraft_typeIndexed", "engine_typeIndexed")
-    val cat_cols = Array("FlightDateCat", "DayOfWeekCat", "DepTimeCat", "CRSArrTimeCat", "UniqueCarrierCat", "tailNumCat", "OriginCat", "DestCat", "typeCat", "manufacturerCat", "modelCat", "aircraft_typeCat", "engine_typeCat")
+
+    val columns_to_index = Array("FlightDate", "DayOfWeek", "DepTime", "CRSArrTime", "UniqueCarrier", "tailNum", "Origin", "Dest", "type", "manufacturer", "issue_date", "model", "aircraft_type", "engine_type")
+    val indexed_columns = Array("FlightDateIndexed", "DayOfWeekIndexed", "DepTimeIndexed", "CRSArrTimeIndexed", "UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed", "typeIndexed", "manufacturerIndexed", "issue_dateIndexed", "modelIndexed", "aircraft_typeIndexed", "engine_typeIndexed")
+    val cat_cols = Array("FlightDateCat", "DayOfWeekCat", "DepTimeCat", "CRSArrTimeCat", "UniqueCarrierCat", "tailNumCat", "OriginCat", "DestCat", "typeCat", "manufacturerCat", "issue_dateCat", "modelCat", "aircraft_typeCat", "engine_typeCat")
 
     // Declaration of the indexer that will transform entries to integer values
     println("--------------------------------- Declaration of the indexer that will transform entries to integer values -----------------------------------------------")
@@ -275,28 +342,151 @@ object Main {
     println()
 
 
-    // Indexing Dataset
-    println("--------------------------------- Indexing Dataset -----------------------------------------------")
-    df = indexer.fit(df).transform(df)
-    println("--------------------------------- Done -----------------------------------------------")
-    println()
+    val ass_cols = Array("FlightNum", "DepDelay", "Distance", "TaxiOut") ++ cat_cols
+
+    // Declaration of the assembler that will extract the features from our variables
+    println("--------------------------------- Extracting features from our data -----------------------------------------------")
+    val assembler = new VectorAssembler()
+      .setInputCols(ass_cols)
+      .setOutputCol("features")
 
 
-    // We apply the One Hot Encoder to the dataset
-    println("--------------------------------- Applying One Hot Encoder -----------------------------------------------")
-    df = ohe.fit(df).transform(df)
-    println("--------------------------------- Done -----------------------------------------------")
-    println()
+    // Normalizing the extracted features
+    println("--------------------------------- Normalizing the extracted features -----------------------------------------------")
+    val normalizer = new Normalizer()
+      .setInputCol("features")
+      .setOutputCol("normFeatures")
+      .setP(1.0)
 
-    //df = df.drop(indexed_columns:_*)
-    //df = df.drop(columns_to_index:_*)
 
-    println("--------------------------------- Final Preprocessed Dataset -----------------------------------------------")
+    val pipeline = new Pipeline()
+      .setStages(Array(indexer, ohe, assembler, normalizer))
+    df = pipeline.fit(df).transform(df)
+    df.printSchema()
     df.show()
 
+    df = df.drop(indexed_columns: _*)
+    df = df.drop(columns_to_index: _*)
 
 
+    val Array(trainingData, testData) = df.randomSplit(Array(0.7, 0.3), 10)
 
+
+    val linearRegression = new LinearRegression()
+      .setFeaturesCol("normFeatures")
+      .setLabelCol("ArrDelay")
+      .setPredictionCol("predictionLR")
+      .setMaxIter(10)
+
+    val linearRegression_paramGrid = new ParamGridBuilder()
+      .addGrid(linearRegression.regParam, Array(0.1, 0.01))
+      .addGrid(linearRegression.elasticNetParam, Array(1, 0.8, 0.5))
+      .build()
+
+    val linearRegression_evaluator_rmse = new RegressionEvaluator()
+      .setLabelCol("ArrDelay")
+      .setPredictionCol("predictionLR")
+      .setMetricName("rmse")
+
+    val linearRegression_evaluator_r2 = new RegressionEvaluator()
+      .setLabelCol("ArrDelay")
+      .setPredictionCol("predictionLR")
+      .setMetricName("r2")
+
+    val linearRegression_cv = new CrossValidator()
+      .setEstimator(linearRegression)
+      .setEvaluator(linearRegression_evaluator_rmse)
+      .setEstimatorParamMaps(linearRegression_paramGrid)
+      .setNumFolds(3)
+      .setParallelism(3)
+
+    val linearRegressionModel = linearRegression_cv.fit(trainingData)
+
+    println("Model parameters:")
+    println(linearRegressionModel.bestModel.extractParamMap())
+    val linearRegression_predictions = linearRegressionModel.transform(testData)
+    println("ArrDelay VS predictionLR:")
+    linearRegression_predictions.select("ArrDelay", "predictionLR").show(10, false)
+    println(s"Root Mean Squared Error = ${linearRegression_evaluator_rmse.evaluate(linearRegression_predictions)}")
+    println(s"R-Squared = ${linearRegression_evaluator_r2.evaluate(linearRegression_predictions)}")
+
+    //-------------------DecisionTreeRegression-----------------------------------------
+    val decissionTreeRegression = new DecisionTreeRegressor()
+      .setLabelCol("ArrDelay")
+      .setFeaturesCol("normFeatures")
+      .setPredictionCol("predictionDTR")
+
+    val decissionTreeRegression_evaluator_rmse = new RegressionEvaluator()
+      .setLabelCol("ArrDelay")
+      .setPredictionCol("predictionDTR")
+      .setMetricName("rmse")
+
+    val decissionTreeRegression_evaluator_r2 = new RegressionEvaluator()
+      .setLabelCol("ArrDelay")
+      .setPredictionCol("predictionDTR")
+      .setMetricName("r2")
+
+    val decissionTreeRegression_cv = new CrossValidator()
+      .setEstimator(decissionTreeRegression)
+      .setEvaluator(decissionTreeRegression_evaluator_rmse)
+      .setEstimatorParamMaps(new ParamGridBuilder().build())
+      .setNumFolds(3)
+      .setParallelism(3)
+
+
+    println("------------------------- Decision Tree Regression -------------------------")
+    val decissionTree_model = decissionTreeRegression_cv.fit(trainingData)
+    println("Model parameters:")
+    println(decissionTree_model.bestModel.extractParamMap())
+    val dtr_predictions_fpr = decissionTree_model.transform(testData)
+    println("ArrDelay VS predictionDTR:")
+    dtr_predictions_fpr.select("ArrDelay", "predictionDTR").show(10, false)
+    println(s"Root Mean Squared Error = ${decissionTreeRegression_evaluator_rmse.evaluate(dtr_predictions_fpr)}")
+    println(s"R-Squared = ${decissionTreeRegression_evaluator_r2.evaluate(dtr_predictions_fpr)}")
+
+
+    //-------------------RandomForestRegression-----------------------------------------
+    val randomForestRegressor = new RandomForestRegressor()
+      .setLabelCol("ArrDelay")
+      .setFeaturesCol("normFeatures")
+      .setPredictionCol("predictionRFR")
+
+    val randomForestRegressor_evaluator_rmse = new RegressionEvaluator()
+      .setLabelCol("ArrDelay")
+      .setPredictionCol("predictionRFR")
+      .setMetricName("rmse")
+
+    val randomForestRegressor_evaluator_r2 = new RegressionEvaluator()
+      .setLabelCol("ArrDelay")
+      .setPredictionCol("predictionRFR")
+      .setMetricName("r2")
+
+    val randomForestRegressor_cv = new CrossValidator()
+      .setEstimator(randomForestRegressor)
+      .setEvaluator(randomForestRegressor_evaluator_rmse)
+      .setEstimatorParamMaps(new ParamGridBuilder().build())
+      .setNumFolds(3)
+      .setParallelism(3)
+
+    println("------------------------Random Forest Regression FPR-------------------------")
+    val randomForestRegressor_model_fpr = randomForestRegressor_cv.fit(trainingData)
+    println("Model parameters:")
+    println(randomForestRegressor_model_fpr.bestModel.extractParamMap())
+    val randomForestRegressor_predictions = randomForestRegressor_model_fpr.transform(testData)
+    println("ArrDelay VS predictionRFR:")
+    randomForestRegressor_predictions.select("normFeatures", "ArrDelay", "predictionRFR").show(10, false)
+    println(s"Root Mean Squared Error = ${randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions)}")
+    println(s"R-Squared = ${randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)}")
+
+
+    println("------------------------Summary-------------------------")
+    val summaryDF = Seq(
+      ("LINEAR REGRESSION", linearRegression_evaluator_rmse.evaluate(linearRegression_predictions), linearRegression_evaluator_r2.evaluate(linearRegression_predictions)),
+      ("DECISION TREE REGRESSION - False Positive Rate Selection", randomForestRegressor_evaluator_rmse.evaluate(dtr_predictions_fpr), randomForestRegressor_evaluator_r2.evaluate(dtr_predictions_fpr)),
+      ("RANDOM FOREST REGRESSION - False Positive Rate Selection", randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions), randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)))
+      .toDF("Algorithm", "RMSE", "R2")
+
+    summaryDF.show(false)
 
   }
 }
