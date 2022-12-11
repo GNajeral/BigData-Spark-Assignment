@@ -11,9 +11,6 @@ import org.apache.spark.sql.types.{IntegerType}
 
 
 object Main {
-  private val DateFormat = new SimpleDateFormat("MM/dd/yyyy")
-  private val calendar = new GregorianCalendar()
-
   private val replace_null_with_unknown = udf((x: String) => {
     var res = new String
     if (x == null || x == "Unknow" || x == "None" || x == "" || x == " ") res = "unknown"
@@ -273,17 +270,6 @@ object Main {
     df = df.drop("Month").drop("DayOfMonth")
     println("--------------------------------- Done -----------------------------------------------")
     println()
-
-
-//    df = df.map(row => {
-//      calendar.setTime(DateFormat.parse(row.getString(15)))
-//      val yearIssued = calendar.get(Calendar.YEAR)
-//      calendar.setTime(DateFormat.parse(row.getString(1)))
-//      val flightYear = calendar.get(Calendar.YEAR)
-//      val PlaneAge = flightYear - yearIssued
-//      (row.getString(0), row.getString(1), row.getInt(2), row.getString(3), row.getString(4), row.getString(5), row.getInt(6), row.getInt(7), row.getInt(8), row.getString(9), row.getString(10), row.getInt(11), row.getInt(12), row.getString(13), row.getString(14), PlaneAge, row.getString(16), row.getString(17), row.getString(18))
-//    }).toDF(df.columns:_*).cache()
-//    df.count()
 
 
     // We create the column "PlaneAge" from the data in "Year" and "issue_date" to then remove the column "issue_date"
