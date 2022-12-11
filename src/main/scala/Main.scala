@@ -3,12 +3,10 @@ import org.apache.spark.ml.evaluation.RegressionEvaluator
 import org.apache.spark.ml.feature.{Imputer, Normalizer, OneHotEncoder, StringIndexer, VectorAssembler}
 import org.apache.spark.ml.regression.{DecisionTreeRegressor, LinearRegression, RandomForestRegressor}
 import org.apache.spark.ml.tuning.{CrossValidator, ParamGridBuilder}
-import org.apache.spark.sql.{SaveMode, SparkSession}
-import org.apache.spark.sql.functions.{col, udf}
-import org.apache.spark.sql.types.{IntegerType, StringType, StructType}
+import org.apache.spark.sql.{SparkSession}
+import org.apache.spark.sql.functions.{col, to_date, udf, year}
+import org.apache.spark.sql.types.{IntegerType}
 
-import java.text.SimpleDateFormat
-import java.util.{Calendar, GregorianCalendar}
 
 
 
@@ -29,15 +27,6 @@ object Main {
     else res = x
     res
   }).asNondeterministic()
-
-//  private val replace_issueDate_with_planeAge = udf((x: String, y: String) => {
-//    calendar.setTime(DateFormat.parse(y))
-//    val yearIssued = calendar.get(Calendar.YEAR)
-//    calendar.setTime(DateFormat.parse(x))
-//    val flightYear = calendar.get(Calendar.YEAR)
-//    val PlaneAge = flightYear - yearIssued
-//    PlaneAge
-//  }).asNondeterministic()
 
   private val replace_time_with_dayPart = udf((x: Integer) => {
     var res = new String
@@ -297,19 +286,14 @@ object Main {
 //    df.count()
 
 
-//    // We create the column "PlaneAge" from the data in "Year" and "issue_date" to then remove the column "issue_date"
-//    println("--------------------------------- We create the column \"PlaneAge\" from the data in \"Year\" and \"issue_date\" to then remove the column \"issue_date\" -----------------------------------------------")
-//    df = df.withColumnRenamed("issue_date", "PlaneAge")
-//    df = df.withColumn("PlaneAge", replace_issueDate_with_planeAge(col("FlightDate"), col("PlaneAge")).cast(IntegerType))
-//    println("--------------------------------- Done -----------------------------------------------")
-//    println()
-//    df.show()
+    // We create the column "PlaneAge" from the data in "Year" and "issue_date" to then remove the column "issue_date"
+    println("--------------------------------- We create the column \"PlaneAge\" from the data in \"Year\" and \"issue_date\" to then remove the column \"issue_date\" -----------------------------------------------")
+    df = df.withColumnRenamed("issue_date", "PlaneAge")
+    df = df.withColumn("PlaneAge", year(to_date(col("FlightDate"), "M/d/y")) - year(to_date(col("PlaneAge"), "M/d/y")))
 
-
-//    for (i <- 0 until df.columns.length) {
-//      println(df.columns(i))
-//      df.filter(df.columns(i) + " LIKE 'E20074'").show()
-//    }
+    println("--------------------------------- Done -----------------------------------------------")
+    println()
+    df.show()
 
 
     //df.repartition(1).write.option("header",value = true).mode(SaveMode.Overwrite).csv("src/main/resources/output")
@@ -320,9 +304,9 @@ object Main {
     println()
 
 
-    val columns_to_index = Array("FlightDate", "DayOfWeek", "DepTime", "CRSArrTime", "UniqueCarrier", "tailNum", "Origin", "Dest", "type", "manufacturer", "issue_date", "model", "aircraft_type", "engine_type")
-    val indexed_columns = Array("FlightDateIndexed", "DayOfWeekIndexed", "DepTimeIndexed", "CRSArrTimeIndexed", "UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed", "typeIndexed", "manufacturerIndexed", "issue_dateIndexed", "modelIndexed", "aircraft_typeIndexed", "engine_typeIndexed")
-    val cat_cols = Array("FlightDateCat", "DayOfWeekCat", "DepTimeCat", "CRSArrTimeCat", "UniqueCarrierCat", "tailNumCat", "OriginCat", "DestCat", "typeCat", "manufacturerCat", "issue_dateCat", "modelCat", "aircraft_typeCat", "engine_typeCat")
+    val columns_to_index = Array("FlightDate", "DayOfWeek", "DepTime", "CRSArrTime", "UniqueCarrier", "tailNum", "Origin", "Dest", "type", "manufacturer", "model", "aircraft_type", "engine_type")
+    val indexed_columns = Array("FlightDateIndexed", "DayOfWeekIndexed", "DepTimeIndexed", "CRSArrTimeIndexed", "UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed", "typeIndexed", "manufacturerIndexed", "modelIndexed", "aircraft_typeIndexed", "engine_typeIndexed")
+    val cat_cols = Array("FlightDateCat", "DayOfWeekCat", "DepTimeCat", "CRSArrTimeCat", "UniqueCarrierCat", "tailNumCat", "OriginCat", "DestCat", "typeCat", "manufacturerCat", "modelCat", "aircraft_typeCat", "engine_typeCat")
 
     // Declaration of the indexer that will transform entries to integer values
     println("--------------------------------- Declaration of the indexer that will transform entries to integer values -----------------------------------------------")
@@ -342,7 +326,7 @@ object Main {
     println()
 
 
-    val ass_cols = Array("FlightNum", "DepDelay", "Distance", "TaxiOut") ++ cat_cols
+    val ass_cols = Array("FlightNum", "DepDelay", "Distance", "TaxiOut", "PlaneAge") ++ cat_cols
 
     // Declaration of the assembler that will extract the features from our variables
     println("--------------------------------- Extracting features from our data -----------------------------------------------")
@@ -363,15 +347,21 @@ object Main {
       .setStages(Array(indexer, ohe, assembler, normalizer))
     df = pipeline.fit(df).transform(df)
     df.printSchema()
-    df.show()
 
     df = df.drop(indexed_columns: _*)
     df = df.drop(columns_to_index: _*)
+    df = df.drop(cat_cols:_*)
+    df = df.drop(Array("FlightNum", "DepDelay", "Distance", "TaxiOut", "PlaneAge", "features"):_*)
+    df.show()
 
 
+    println("--------------------------------- Separate data in train and test -----------------------------------------------")
     val Array(trainingData, testData) = df.randomSplit(Array(0.7, 0.3), 10)
+    println("--------------------------------- Done -----------------------------------------------")
+    println()
 
 
+    println("--------------------------------- LinearRegression Declaration -----------------------------------------------")
     val linearRegression = new LinearRegression()
       .setFeaturesCol("normFeatures")
       .setLabelCol("ArrDelay")
@@ -400,6 +390,10 @@ object Main {
       .setNumFolds(3)
       .setParallelism(3)
 
+    println("--------------------------------- Done -----------------------------------------------")
+    println()
+
+    println("--------------------------------- LinearRegression Training -----------------------------------------------")
     val linearRegressionModel = linearRegression_cv.fit(trainingData)
 
     println("Model parameters:")
@@ -411,24 +405,24 @@ object Main {
     println(s"R-Squared = ${linearRegression_evaluator_r2.evaluate(linearRegression_predictions)}")
 
     //-------------------DecisionTreeRegression-----------------------------------------
-    val decissionTreeRegression = new DecisionTreeRegressor()
+    val decisionTreeRegression = new DecisionTreeRegressor()
       .setLabelCol("ArrDelay")
       .setFeaturesCol("normFeatures")
       .setPredictionCol("predictionDTR")
 
-    val decissionTreeRegression_evaluator_rmse = new RegressionEvaluator()
+    val decisionTreeRegression_evaluator_rmse = new RegressionEvaluator()
       .setLabelCol("ArrDelay")
       .setPredictionCol("predictionDTR")
       .setMetricName("rmse")
 
-    val decissionTreeRegression_evaluator_r2 = new RegressionEvaluator()
+    val decisionTreeRegression_evaluator_r2 = new RegressionEvaluator()
       .setLabelCol("ArrDelay")
       .setPredictionCol("predictionDTR")
       .setMetricName("r2")
 
     val decissionTreeRegression_cv = new CrossValidator()
-      .setEstimator(decissionTreeRegression)
-      .setEvaluator(decissionTreeRegression_evaluator_rmse)
+      .setEstimator(decisionTreeRegression)
+      .setEvaluator(decisionTreeRegression_evaluator_rmse)
       .setEstimatorParamMaps(new ParamGridBuilder().build())
       .setNumFolds(3)
       .setParallelism(3)
@@ -438,11 +432,11 @@ object Main {
     val decissionTree_model = decissionTreeRegression_cv.fit(trainingData)
     println("Model parameters:")
     println(decissionTree_model.bestModel.extractParamMap())
-    val dtr_predictions_fpr = decissionTree_model.transform(testData)
+    val decisionTreeRegression_predictions = decissionTree_model.transform(testData)
     println("ArrDelay VS predictionDTR:")
-    dtr_predictions_fpr.select("ArrDelay", "predictionDTR").show(10, false)
-    println(s"Root Mean Squared Error = ${decissionTreeRegression_evaluator_rmse.evaluate(dtr_predictions_fpr)}")
-    println(s"R-Squared = ${decissionTreeRegression_evaluator_r2.evaluate(dtr_predictions_fpr)}")
+    decisionTreeRegression_predictions.select("ArrDelay", "predictionDTR").show(10, false)
+    println(s"Root Mean Squared Error = ${decisionTreeRegression_evaluator_rmse.evaluate(decisionTreeRegression_predictions)}")
+    println(s"R-Squared = ${decisionTreeRegression_evaluator_r2.evaluate(decisionTreeRegression_predictions)}")
 
 
     //-------------------RandomForestRegression-----------------------------------------
@@ -469,10 +463,10 @@ object Main {
       .setParallelism(3)
 
     println("------------------------Random Forest Regression FPR-------------------------")
-    val randomForestRegressor_model_fpr = randomForestRegressor_cv.fit(trainingData)
+    val randomForestRegressor_model = randomForestRegressor_cv.fit(trainingData)
     println("Model parameters:")
-    println(randomForestRegressor_model_fpr.bestModel.extractParamMap())
-    val randomForestRegressor_predictions = randomForestRegressor_model_fpr.transform(testData)
+    println(randomForestRegressor_model.bestModel.extractParamMap())
+    val randomForestRegressor_predictions = randomForestRegressor_model.transform(testData)
     println("ArrDelay VS predictionRFR:")
     randomForestRegressor_predictions.select("normFeatures", "ArrDelay", "predictionRFR").show(10, false)
     println(s"Root Mean Squared Error = ${randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions)}")
@@ -482,8 +476,8 @@ object Main {
     println("------------------------Summary-------------------------")
     val summaryDF = Seq(
       ("LINEAR REGRESSION", linearRegression_evaluator_rmse.evaluate(linearRegression_predictions), linearRegression_evaluator_r2.evaluate(linearRegression_predictions)),
-      ("DECISION TREE REGRESSION - False Positive Rate Selection", randomForestRegressor_evaluator_rmse.evaluate(dtr_predictions_fpr), randomForestRegressor_evaluator_r2.evaluate(dtr_predictions_fpr)),
-      ("RANDOM FOREST REGRESSION - False Positive Rate Selection", randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions), randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)))
+      ("DECISION TREE REGRESSION", decisionTreeRegression_evaluator_rmse.evaluate(decisionTreeRegression_predictions), decisionTreeRegression_evaluator_r2.evaluate(decisionTreeRegression_predictions)),
+      ("RANDOM FOREST REGRESSION", randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions), randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)))
       .toDF("Algorithm", "RMSE", "R2")
 
     summaryDF.show(false)
