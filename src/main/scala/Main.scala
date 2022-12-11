@@ -474,7 +474,7 @@ object Main {
     println(randomForestRegressor_model_fpr.bestModel.extractParamMap())
     val randomForestRegressor_predictions = randomForestRegressor_model_fpr.transform(testData)
     println("ArrDelay VS predictionRFR:")
-    randomForestRegressor_predictions.select("selectedFeatures", "ArrDelay", "predictionRFR").show(10, false)
+    randomForestRegressor_predictions.select("normFeatures", "ArrDelay", "predictionRFR").show(10, false)
     println(s"Root Mean Squared Error = ${randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions)}")
     println(s"R-Squared = ${randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)}")
 
