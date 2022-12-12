@@ -101,7 +101,7 @@ object Main {
 
     // We read the input data
     var df = spark.read.option("header", value = "true").csv("src/main/resources/2008.csv")
-    df = df.union(spark.read.option("header", value = "true").csv("src/main/resources/2007.csv"))
+    //df = df.union(spark.read.option("header", value = "true").csv("src/main/resources/2007.csv"))
     var df_plane = spark.read.option("header", value = "true").csv("src/main/resources/plane-data.csv")
 
 
@@ -119,10 +119,7 @@ object Main {
     df = df.filter("ArrDelay is NOT NULL AND ArrDelay NOT LIKE 'NA'")
     println("--------------------------------- Done -----------------------------------------------")
     println()
-
-
-    // We separate our target variable from the rest of the dataset, saving it in a different one
-    println("--------------------------------- target variable -----------------------------------------------")
+    println("--------------------------------- Target variable -----------------------------------------------")
     println("'ArrDelay'")
     println("--------------------------------- Done -----------------------------------------------")
     println()
@@ -278,7 +275,6 @@ object Main {
     println("--------------------------------- We create the column \"PlaneAge\" from the data in \"Year\" and \"issue_date\" to then remove the column \"issue_date\" -----------------------------------------------")
     df = df.withColumnRenamed("issue_date", "PlaneAge")
     df = df.withColumn("PlaneAge", year(to_date(col("FlightDate"), "M/d/y")) - year(to_date(col("PlaneAge"), "M/d/y")))
-
     println("--------------------------------- Done -----------------------------------------------")
     println()
     df.show()
@@ -286,15 +282,13 @@ object Main {
 
     //df.repartition(1).write.option("header",value = true).mode(SaveMode.Overwrite).csv("src/main/resources/output")
 
-    println("--------------------------------- Variance of DepDelay -----------------------------------------------")
-    println(df.stat.cov("DepDelay", "DepDelay"))
-    println("--------------------------------- Done -----------------------------------------------")
-    println()
 
-
+    // We divide the variables into numerical/continuous and categorical
+    val num_cols = Array("FlightNum", "DepDelay", "Distance", "TaxiOut", "PlaneAge")
+    val cat_cols = Array("FlightDateCat", "DayOfWeekCat", "DepTimeCat", "CRSArrTimeCat", "UniqueCarrierCat", "tailNumCat", "OriginCat", "DestCat", "typeCat", "manufacturerCat", "modelCat", "aircraft_typeCat", "engine_typeCat")
     val columns_to_index = Array("FlightDate", "DayOfWeek", "DepTime", "CRSArrTime", "UniqueCarrier", "tailNum", "Origin", "Dest", "type", "manufacturer", "model", "aircraft_type", "engine_type")
     val indexed_columns = Array("FlightDateIndexed", "DayOfWeekIndexed", "DepTimeIndexed", "CRSArrTimeIndexed", "UniqueCarrierIndexed", "tailNumIndexed", "OriginIndexed", "DestIndexed", "typeIndexed", "manufacturerIndexed", "modelIndexed", "aircraft_typeIndexed", "engine_typeIndexed")
-    val cat_cols = Array("FlightDateCat", "DayOfWeekCat", "DepTimeCat", "CRSArrTimeCat", "UniqueCarrierCat", "tailNumCat", "OriginCat", "DestCat", "typeCat", "manufacturerCat", "modelCat", "aircraft_typeCat", "engine_typeCat")
+
 
     // Declaration of the indexer that will transform entries to integer values
     println("--------------------------------- Declaration of the indexer that will transform entries to integer values -----------------------------------------------")
@@ -314,13 +308,15 @@ object Main {
     println()
 
 
-    val ass_cols = Array("FlightNum", "DepDelay", "Distance", "TaxiOut", "PlaneAge") ++ cat_cols
+    val ass_cols = num_cols ++ cat_cols
 
     // Declaration of the assembler that will extract the features from our variables
     println("--------------------------------- Extracting features from our data -----------------------------------------------")
     val assembler = new VectorAssembler()
       .setInputCols(ass_cols)
       .setOutputCol("features")
+    println("--------------------------------- Done -----------------------------------------------")
+    println()
 
 
     // Normalizing the extracted features
@@ -329,8 +325,12 @@ object Main {
       .setInputCol("features")
       .setOutputCol("normFeatures")
       .setP(1.0)
+    println("--------------------------------- Done -----------------------------------------------")
+    println()
 
 
+    // We use the pipeline 
+    println("--------------------------------- Normalizing the extracted features -----------------------------------------------")
     val pipeline = new Pipeline()
       .setStages(Array(indexer, ohe, assembler, normalizer))
     df = pipeline.fit(df).transform(df)
