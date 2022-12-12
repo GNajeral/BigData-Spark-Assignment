@@ -101,7 +101,7 @@ object Main {
 
     // We read the input data
     var df = spark.read.option("header", value = "true").csv("src/main/resources/2008.csv")
-    df = df.union(spark.read.option("header", value = "true").csv("src/main/resources/2007.csv"))
+    //df = df.union(spark.read.option("header", value = "true").csv("src/main/resources/2007.csv"))
     var df_plane = spark.read.option("header", value = "true").csv("src/main/resources/plane-data.csv")
 
 
