@@ -1,11 +1,12 @@
 import org.apache.spark.ml.Pipeline
 import org.apache.spark.ml.evaluation.RegressionEvaluator
-import org.apache.spark.ml.feature.{Imputer, Normalizer, OneHotEncoder, StringIndexer, VectorAssembler}
-import org.apache.spark.ml.regression.{DecisionTreeRegressor, LinearRegression, RandomForestRegressor}
+import org.apache.spark.ml.feature.{Imputer, Normalizer, OneHotEncoder, StringIndexer, UnivariateFeatureSelector, VectorAssembler}
+import org.apache.spark.ml.linalg.SparseVector
+import org.apache.spark.ml.regression.{DecisionTreeRegressor, GeneralizedLinearRegression, LinearRegression, RandomForestRegressor}
 import org.apache.spark.ml.tuning.{CrossValidator, ParamGridBuilder}
-import org.apache.spark.sql.{SparkSession}
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.{col, to_date, udf, year}
-import org.apache.spark.sql.types.{IntegerType}
+import org.apache.spark.sql.types.IntegerType
 
 
 
@@ -341,132 +342,372 @@ object Main {
     df.show()
 
 
-    println("--------------------------------- Separate data in train and test -----------------------------------------------")
-    val Array(trainingData, testData) = df.randomSplit(Array(0.7, 0.3), 10)
-    println("--------------------------------- Done -----------------------------------------------")
-    println()
+    //-------------------FSS-----------------------------------------
 
+    // In order to set up the models, 3-fold cross validation has been applied
+    // After fitting the best model for all the algorithms, the models have been evaluated
+    // with a test set for each FSS
 
-    println("--------------------------------- LinearRegression Declaration -----------------------------------------------")
-    val linearRegression = new LinearRegression()
+    // Selectors have not been considered for cross validation since we want
+    // to see and compare the performance for all the different FSS
+
+    val selector_fpr = new UnivariateFeatureSelector()
+      .setFeatureType("continuous")
+      .setLabelType("continuous") // score function -> F-value (f_regression)
+      .setSelectionThreshold(0.05)
+      .setSelectionMode("fpr") // false positive rate
       .setFeaturesCol("normFeatures")
       .setLabelCol("ArrDelay")
+      .setOutputCol("selectedFeatures")
+
+    val selector_fdr = new UnivariateFeatureSelector()
+      .setFeatureType("continuous")
+      .setLabelType("continuous") // score function -> F-value (f_regression)
+      .setSelectionThreshold(0.05)
+      .setSelectionMode("fdr") // false discovery rate
+      .setFeaturesCol("normFeatures")
+      .setLabelCol("ArrDelay")
+      .setOutputCol("selectedFeatures")
+
+    val selector_fwe = new UnivariateFeatureSelector()
+      .setFeatureType("continuous")
+      .setLabelType("continuous") // score function -> F-value (f_regression)
+      .setSelectionThreshold(0.05)
+      .setSelectionMode("fwe") // family-wise error rate
+      .setFeaturesCol("normFeatures")
+      .setLabelCol("ArrDelay")
+      .setOutputCol("selectedFeatures")
+
+    val row = df.select("normFeatures").head
+    val vector = row(0).asInstanceOf[SparseVector]
+    println(s"Number of features without FSS: ${vector.size}")
+
+    println("Performing FSS selection - false positive rate")
+    val fpr = selector_fpr.fit(df)
+    val df_fpr = fpr.transform(df)
+    println("Done")
+    println(s"Number of features after applying false positive rate FSS: ${fpr.selectedFeatures.length}")
+    println("Performing FSS selection - false discovery rate")
+    val fdr = selector_fdr.fit(df)
+    val df_fdr = fdr.transform(df)
+    println("Done")
+    println(s"Number of features after applying false discovery rate FSS: ${fdr.selectedFeatures.length}")
+    println("Performing FSS selection - family-wise error rate")
+    val fwe = selector_fwe.fit(df)
+    val df_fwe = fwe.transform(df)
+    println("Done")
+    println(s"Number of features after applying family-wise error FSS: ${fwe.selectedFeatures.length}")
+
+    val Array(trainingData_fpr, testData_fpr) = df_fpr.randomSplit(Array(0.7, 0.3), 10)
+    val Array(trainingData_fdr, testData_fdr) = df_fdr.randomSplit(Array(0.7, 0.3), 10)
+    val Array(trainingData_fwe, testData_fwe) = df_fwe.randomSplit(Array(0.7, 0.3), 10)
+
+    /*
+     As it is a regression problem, that is, explaining or predicting the value of a continuous variable,
+     we have tried to apply many algorithms within the family of regression algorithms
+     (also trying not to extend the execution too much) and then compare the
+     different results obtained. Specifically, the following algorithms have been applied: Linear regression,
+     Generalized linear regression, Decision tree regression and Random forest regression.
+     */
+
+    //-------------------LinearRegression-----------------------------------------
+    val lr = new LinearRegression()
+      .setLabelCol("ArrDelay")
+      .setFeaturesCol("selectedFeatures")
       .setPredictionCol("predictionLR")
       .setMaxIter(10)
 
-    val linearRegression_paramGrid = new ParamGridBuilder()
-      .addGrid(linearRegression.regParam, Array(0.1, 0.01))
-      .addGrid(linearRegression.elasticNetParam, Array(1, 0.8, 0.5))
+    val lr_paramGrid = new ParamGridBuilder()
+      .addGrid(lr.regParam, Array(0.1, 0.01))
+      .addGrid(lr.elasticNetParam, Array(1, 0.8, 0.5))
       .build()
 
-    val linearRegression_evaluator_rmse = new RegressionEvaluator()
+    val lr_evaluator_rmse = new RegressionEvaluator()
       .setLabelCol("ArrDelay")
       .setPredictionCol("predictionLR")
       .setMetricName("rmse")
 
-    val linearRegression_evaluator_r2 = new RegressionEvaluator()
+    val lr_evaluator_r2 = new RegressionEvaluator()
       .setLabelCol("ArrDelay")
       .setPredictionCol("predictionLR")
       .setMetricName("r2")
 
-    val linearRegression_cv = new CrossValidator()
-      .setEstimator(linearRegression)
-      .setEvaluator(linearRegression_evaluator_rmse)
-      .setEstimatorParamMaps(linearRegression_paramGrid)
+    val lr_cv = new CrossValidator()
+      .setEstimator(lr)
+      .setEvaluator(lr_evaluator_rmse)
+      .setEstimatorParamMaps(lr_paramGrid)
       .setNumFolds(3)
       .setParallelism(3)
 
-    println("--------------------------------- Done -----------------------------------------------")
-    println()
-
-    println("--------------------------------- LinearRegression Training -----------------------------------------------")
-    val linearRegressionModel = linearRegression_cv.fit(trainingData)
-
+    println("-------------------------Linear Regression FPR-------------------------")
+    val lr_model_fpr = lr_cv.fit(trainingData_fpr)
     println("Model parameters:")
-    println(linearRegressionModel.bestModel.extractParamMap())
-    val linearRegression_predictions = linearRegressionModel.transform(testData)
+    println(lr_model_fpr.bestModel.extractParamMap())
+    val lr_predictions_fpr = lr_model_fpr.transform(testData_fpr)
     println("ArrDelay VS predictionLR:")
-    linearRegression_predictions.select("ArrDelay", "predictionLR").show(10, false)
-    println(s"Root Mean Squared Error = ${linearRegression_evaluator_rmse.evaluate(linearRegression_predictions)}")
-    println(s"R-Squared = ${linearRegression_evaluator_r2.evaluate(linearRegression_predictions)}")
+    lr_predictions_fpr.select("ArrDelay", "predictionLR").show(10, false)
+    println(s"Root Mean Squared Error = ${lr_evaluator_rmse.evaluate(lr_predictions_fpr)}")
+    println(s"R-Squared = ${lr_evaluator_r2.evaluate(lr_predictions_fpr)}")
+
+    println("-------------------------Linear Regression FDR-------------------------")
+    val lr_model_fdr = lr_cv.fit(trainingData_fdr)
+    println("Model parameters:")
+    println(lr_model_fdr.bestModel.extractParamMap())
+    val lr_predictions_fdr = lr_model_fdr.transform(testData_fdr)
+    println("ArrDelay VS predictionLR:")
+    lr_predictions_fdr.select("ArrDelay", "predictionLR").show(10, false)
+    println(s"Root Mean Squared Error = ${lr_evaluator_rmse.evaluate(lr_predictions_fdr)}")
+    println(s"R-Squared = ${lr_evaluator_r2.evaluate(lr_predictions_fdr)}")
+
+    println("-------------------------Linear Regression FWE-------------------------")
+    val lr_model_fwe = lr_cv.fit(trainingData_fwe)
+    println("Model parameters:")
+    println(lr_model_fwe.bestModel.extractParamMap())
+    val lr_predictions_fwe = lr_model_fwe.transform(testData_fwe)
+    println("ArrDelay VS predictionLR:")
+    lr_predictions_fwe.select("ArrDelay", "predictionLR").show(10, false)
+    println(s"Root Mean Squared Error = ${lr_evaluator_rmse.evaluate(lr_predictions_fwe)}")
+    println(s"R-Squared = ${lr_evaluator_r2.evaluate(lr_predictions_fwe)}")
+
+    //-------------------GeneralizedLinearRegression-----------------------------------------
+    val glr = new GeneralizedLinearRegression()
+      .setLabelCol("ArrDelay")
+      .setFeaturesCol("selectedFeatures")
+      .setPredictionCol("predictionGLR")
+      .setLink("identity")
+      .setFamily("gaussian")
+      .setMaxIter(10)
+
+    val glr_paramGrid = new ParamGridBuilder()
+      .addGrid(glr.regParam, Array(0.1, 0.01))
+      .build()
+
+    val glr_evaluator_rmse = new RegressionEvaluator()
+      .setLabelCol("ArrDelay")
+      .setPredictionCol("predictionGLR")
+      .setMetricName("rmse")
+
+    val glr_evaluator_r2 = new RegressionEvaluator()
+      .setLabelCol("ArrDelay")
+      .setPredictionCol("predictionGLR")
+      .setMetricName("r2")
+
+    val glr_cv = new CrossValidator()
+      .setEstimator(glr)
+      .setEvaluator(glr_evaluator_rmse)
+      .setEstimatorParamMaps(glr_paramGrid)
+      .setNumFolds(3)
+      .setParallelism(3)
+
+    // No False Positive Rate and False Discovery Rate FSS for Generalized Linear Regression
+    // since the number of features has to be <= 4096
+
+    println("-------------------------Generalized Linear Regression FWE-------------------------")
+    val glr_model_fwe = glr_cv.fit(trainingData_fwe)
+    println("Model parameters:")
+    println(glr_model_fwe.bestModel.extractParamMap())
+    val glr_predictions_fwe = glr_model_fwe.transform(testData_fwe)
+    println("ArrDelay VS predictionGLR:")
+    glr_predictions_fwe.select("ArrDelay", "predictionGLR").show(10, false)
+    println(s"Root Mean Squared Error = ${glr_evaluator_rmse.evaluate(glr_predictions_fwe)}")
+    println(s"R-Squared = ${glr_evaluator_r2.evaluate(glr_predictions_fwe)}")
 
     //-------------------DecisionTreeRegression-----------------------------------------
-    val decisionTreeRegression = new DecisionTreeRegressor()
+    val dtr = new DecisionTreeRegressor()
       .setLabelCol("ArrDelay")
-      .setFeaturesCol("normFeatures")
+      .setFeaturesCol("selectedFeatures")
       .setPredictionCol("predictionDTR")
 
-    val decisionTreeRegression_evaluator_rmse = new RegressionEvaluator()
+    val dtr_evaluator_rmse = new RegressionEvaluator()
       .setLabelCol("ArrDelay")
       .setPredictionCol("predictionDTR")
       .setMetricName("rmse")
 
-    val decisionTreeRegression_evaluator_r2 = new RegressionEvaluator()
+    val dtr_evaluator_r2 = new RegressionEvaluator()
       .setLabelCol("ArrDelay")
       .setPredictionCol("predictionDTR")
       .setMetricName("r2")
 
-    val decissionTreeRegression_cv = new CrossValidator()
-      .setEstimator(decisionTreeRegression)
-      .setEvaluator(decisionTreeRegression_evaluator_rmse)
+    val dtr_cv = new CrossValidator()
+      .setEstimator(dtr)
+      .setEvaluator(dtr_evaluator_rmse)
       .setEstimatorParamMaps(new ParamGridBuilder().build())
       .setNumFolds(3)
       .setParallelism(3)
 
-
-    println("------------------------- Decision Tree Regression -------------------------")
-    val decissionTree_model = decissionTreeRegression_cv.fit(trainingData)
+    println("-------------------------Decision Tree Regression FPR-------------------------")
+    val dtr_model_fpr = dtr_cv.fit(trainingData_fpr)
     println("Model parameters:")
-    println(decissionTree_model.bestModel.extractParamMap())
-    val decisionTreeRegression_predictions = decissionTree_model.transform(testData)
+    println(dtr_model_fpr.bestModel.extractParamMap())
+    val dtr_predictions_fpr = dtr_model_fpr.transform(testData_fpr)
     println("ArrDelay VS predictionDTR:")
-    decisionTreeRegression_predictions.select("ArrDelay", "predictionDTR").show(10, false)
-    println(s"Root Mean Squared Error = ${decisionTreeRegression_evaluator_rmse.evaluate(decisionTreeRegression_predictions)}")
-    println(s"R-Squared = ${decisionTreeRegression_evaluator_r2.evaluate(decisionTreeRegression_predictions)}")
+    dtr_predictions_fpr.select("ArrDelay", "predictionDTR").show(10, false)
+    println(s"Root Mean Squared Error = ${dtr_evaluator_rmse.evaluate(dtr_predictions_fpr)}")
+    println(s"R-Squared = ${dtr_evaluator_r2.evaluate(dtr_predictions_fpr)}")
 
-
-    //-------------------RandomForestRegression-----------------------------------------
-    val randomForestRegressor = new RandomForestRegressor()
-      .setLabelCol("ArrDelay")
-      .setFeaturesCol("normFeatures")
-      .setPredictionCol("predictionRFR")
-
-    val randomForestRegressor_evaluator_rmse = new RegressionEvaluator()
-      .setLabelCol("ArrDelay")
-      .setPredictionCol("predictionRFR")
-      .setMetricName("rmse")
-
-    val randomForestRegressor_evaluator_r2 = new RegressionEvaluator()
-      .setLabelCol("ArrDelay")
-      .setPredictionCol("predictionRFR")
-      .setMetricName("r2")
-
-    val randomForestRegressor_cv = new CrossValidator()
-      .setEstimator(randomForestRegressor)
-      .setEvaluator(randomForestRegressor_evaluator_rmse)
-      .setEstimatorParamMaps(new ParamGridBuilder().build())
-      .setNumFolds(3)
-      .setParallelism(3)
-
-    println("------------------------Random Forest Regression FPR-------------------------")
-    val randomForestRegressor_model = randomForestRegressor_cv.fit(trainingData)
+    println("-------------------------Decision Tree Regression FDR-------------------------")
+    val dtr_model_fdr = dtr_cv.fit(trainingData_fdr)
     println("Model parameters:")
-    println(randomForestRegressor_model.bestModel.extractParamMap())
-    val randomForestRegressor_predictions = randomForestRegressor_model.transform(testData)
-    println("ArrDelay VS predictionRFR:")
-    randomForestRegressor_predictions.select("normFeatures", "ArrDelay", "predictionRFR").show(10, false)
-    println(s"Root Mean Squared Error = ${randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions)}")
-    println(s"R-Squared = ${randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)}")
+    println(dtr_model_fdr.bestModel.extractParamMap())
+    val dtr_predictions_fdr = dtr_model_fdr.transform(testData_fdr)
+    println("ArrDelay VS predictionDTR:")
+    dtr_predictions_fdr.select("ArrDelay", "predictionDTR").show(10, false)
+    println(s"Root Mean Squared Error = ${dtr_evaluator_rmse.evaluate(dtr_predictions_fdr)}")
+    println(s"R-Squared = ${dtr_evaluator_r2.evaluate(dtr_predictions_fdr)}")
+
+    println("-------------------------Decision Tree Regression FWE-------------------------")
+    val dtr_model_fwe = dtr_cv.fit(trainingData_fwe)
+    println("Model parameters:")
+    println(dtr_model_fwe.bestModel.extractParamMap())
+    val dtr_predictions_fwe = dtr_model_fwe.transform(testData_fwe)
+    println("ArrDelay VS predictionDTR:")
+    dtr_predictions_fwe.select("ArrDelay", "predictionDTR").show(10, false)
+    println(s"Root Mean Squared Error = ${dtr_evaluator_rmse.evaluate(dtr_predictions_fwe)}")
+    println(s"R-Squared = ${dtr_evaluator_r2.evaluate(dtr_predictions_fwe)}")
 
 
+    // Summary table with RMSE and R2 measures for all the trained, validated and evaluated models
+    // R2 measures the variability of the dependent variable (ArrDelay) that is explained by the predictors (must be independent variables)
+    // RMSE measures the differences between predicted values by the model and the actual values.
     println("------------------------Summary-------------------------")
     val summaryDF = Seq(
-      ("LINEAR REGRESSION", linearRegression_evaluator_rmse.evaluate(linearRegression_predictions), linearRegression_evaluator_r2.evaluate(linearRegression_predictions)),
-      ("DECISION TREE REGRESSION", decisionTreeRegression_evaluator_rmse.evaluate(decisionTreeRegression_predictions), decisionTreeRegression_evaluator_r2.evaluate(decisionTreeRegression_predictions)),
-      ("RANDOM FOREST REGRESSION", randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions), randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)))
+      ("LINEAR REGRESSION - False Positive Rate Selection", lr_evaluator_rmse.evaluate(lr_predictions_fpr), lr_evaluator_r2.evaluate(lr_predictions_fpr)),
+      ("LINEAR REGRESSION - False Discovery Rate Selection", lr_evaluator_rmse.evaluate(lr_predictions_fdr), lr_evaluator_r2.evaluate(lr_predictions_fdr)),
+      ("LINEAR REGRESSION - Family-Wise Error Rate Selection", lr_evaluator_rmse.evaluate(lr_predictions_fwe), lr_evaluator_r2.evaluate(lr_predictions_fwe)),
+      ("GENERALIZED LINEAR REGRESSION - Family-Wise Error Rate Selection", glr_evaluator_rmse.evaluate(glr_predictions_fwe), glr_evaluator_r2.evaluate(glr_predictions_fwe)),
+      ("DECISION TREE REGRESSION - False Positive Rate Selection", dtr_evaluator_rmse.evaluate(dtr_predictions_fpr), dtr_evaluator_r2.evaluate(dtr_predictions_fpr)),
+      ("DECISION TREE REGRESSION - False Discovery Rate Selection", dtr_evaluator_rmse.evaluate(dtr_predictions_fdr), dtr_evaluator_r2.evaluate(dtr_predictions_fdr)),
+      ("DECISION TREE REGRESSION - Family-Wise Error Rate Selection", dtr_evaluator_rmse.evaluate(dtr_predictions_fwe), dtr_evaluator_r2.evaluate(dtr_predictions_fwe)))
       .toDF("Algorithm", "RMSE", "R2")
 
     summaryDF.show(false)
+
+//    println("--------------------------------- Separate data in train and test -----------------------------------------------")
+//    val Array(trainingData, testData) = df.randomSplit(Array(0.7, 0.3), 10)
+//    println("--------------------------------- Done -----------------------------------------------")
+//    println()
+//
+//
+//    println("--------------------------------- LinearRegression Declaration -----------------------------------------------")
+//    val linearRegression = new LinearRegression()
+//      .setFeaturesCol("normFeatures")
+//      .setLabelCol("ArrDelay")
+//      .setPredictionCol("predictionLR")
+//      .setMaxIter(10)
+//
+//    val linearRegression_paramGrid = new ParamGridBuilder()
+//      .addGrid(linearRegression.regParam, Array(0.1, 0.01))
+//      .addGrid(linearRegression.elasticNetParam, Array(1, 0.8, 0.5))
+//      .build()
+//
+//    val linearRegression_evaluator_rmse = new RegressionEvaluator()
+//      .setLabelCol("ArrDelay")
+//      .setPredictionCol("predictionLR")
+//      .setMetricName("rmse")
+//
+//    val linearRegression_evaluator_r2 = new RegressionEvaluator()
+//      .setLabelCol("ArrDelay")
+//      .setPredictionCol("predictionLR")
+//      .setMetricName("r2")
+//
+//    val linearRegression_cv = new CrossValidator()
+//      .setEstimator(linearRegression)
+//      .setEvaluator(linearRegression_evaluator_rmse)
+//      .setEstimatorParamMaps(linearRegression_paramGrid)
+//      .setNumFolds(3)
+//      .setParallelism(3)
+//
+//    println("--------------------------------- Done -----------------------------------------------")
+//    println()
+//
+//    println("--------------------------------- LinearRegression Training -----------------------------------------------")
+//    val linearRegressionModel = linearRegression_cv.fit(trainingData)
+//
+//    println("Model parameters:")
+//    println(linearRegressionModel.bestModel.extractParamMap())
+//    val linearRegression_predictions = linearRegressionModel.transform(testData)
+//    println("ArrDelay VS predictionLR:")
+//    linearRegression_predictions.select("ArrDelay", "predictionLR").show(10, false)
+//    println(s"Root Mean Squared Error = ${linearRegression_evaluator_rmse.evaluate(linearRegression_predictions)}")
+//    println(s"R-Squared = ${linearRegression_evaluator_r2.evaluate(linearRegression_predictions)}")
+//
+//    //-------------------DecisionTreeRegression-----------------------------------------
+//    val decisionTreeRegression = new DecisionTreeRegressor()
+//      .setLabelCol("ArrDelay")
+//      .setFeaturesCol("normFeatures")
+//      .setPredictionCol("predictionDTR")
+//
+//    val decisionTreeRegression_evaluator_rmse = new RegressionEvaluator()
+//      .setLabelCol("ArrDelay")
+//      .setPredictionCol("predictionDTR")
+//      .setMetricName("rmse")
+//
+//    val decisionTreeRegression_evaluator_r2 = new RegressionEvaluator()
+//      .setLabelCol("ArrDelay")
+//      .setPredictionCol("predictionDTR")
+//      .setMetricName("r2")
+//
+//    val decissionTreeRegression_cv = new CrossValidator()
+//      .setEstimator(decisionTreeRegression)
+//      .setEvaluator(decisionTreeRegression_evaluator_rmse)
+//      .setEstimatorParamMaps(new ParamGridBuilder().build())
+//      .setNumFolds(3)
+//      .setParallelism(3)
+//
+//
+//    println("------------------------- Decision Tree Regression -------------------------")
+//    val decissionTree_model = decissionTreeRegression_cv.fit(trainingData)
+//    println("Model parameters:")
+//    println(decissionTree_model.bestModel.extractParamMap())
+//    val decisionTreeRegression_predictions = decissionTree_model.transform(testData)
+//    println("ArrDelay VS predictionDTR:")
+//    decisionTreeRegression_predictions.select("ArrDelay", "predictionDTR").show(10, false)
+//    println(s"Root Mean Squared Error = ${decisionTreeRegression_evaluator_rmse.evaluate(decisionTreeRegression_predictions)}")
+//    println(s"R-Squared = ${decisionTreeRegression_evaluator_r2.evaluate(decisionTreeRegression_predictions)}")
+//
+//
+//    //-------------------RandomForestRegression-----------------------------------------
+//    val randomForestRegressor = new RandomForestRegressor()
+//      .setLabelCol("ArrDelay")
+//      .setFeaturesCol("normFeatures")
+//      .setPredictionCol("predictionRFR")
+//
+//    val randomForestRegressor_evaluator_rmse = new RegressionEvaluator()
+//      .setLabelCol("ArrDelay")
+//      .setPredictionCol("predictionRFR")
+//      .setMetricName("rmse")
+//
+//    val randomForestRegressor_evaluator_r2 = new RegressionEvaluator()
+//      .setLabelCol("ArrDelay")
+//      .setPredictionCol("predictionRFR")
+//      .setMetricName("r2")
+//
+//    val randomForestRegressor_cv = new CrossValidator()
+//      .setEstimator(randomForestRegressor)
+//      .setEvaluator(randomForestRegressor_evaluator_rmse)
+//      .setEstimatorParamMaps(new ParamGridBuilder().build())
+//      .setNumFolds(3)
+//      .setParallelism(3)
+//
+//    println("------------------------Random Forest Regression FPR-------------------------")
+//    val randomForestRegressor_model = randomForestRegressor_cv.fit(trainingData)
+//    println("Model parameters:")
+//    println(randomForestRegressor_model.bestModel.extractParamMap())
+//    val randomForestRegressor_predictions = randomForestRegressor_model.transform(testData)
+//    println("ArrDelay VS predictionRFR:")
+//    randomForestRegressor_predictions.select("normFeatures", "ArrDelay", "predictionRFR").show(10, false)
+//    println(s"Root Mean Squared Error = ${randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions)}")
+//    println(s"R-Squared = ${randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)}")
+//
+//
+//    println("------------------------Summary-------------------------")
+//    val summaryDF = Seq(
+//      ("LINEAR REGRESSION", linearRegression_evaluator_rmse.evaluate(linearRegression_predictions), linearRegression_evaluator_r2.evaluate(linearRegression_predictions)),
+//      ("DECISION TREE REGRESSION", decisionTreeRegression_evaluator_rmse.evaluate(decisionTreeRegression_predictions), decisionTreeRegression_evaluator_r2.evaluate(decisionTreeRegression_predictions)),
+//      ("RANDOM FOREST REGRESSION", randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions), randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)))
+//      .toDF("Algorithm", "RMSE", "R2")
+//
+//    summaryDF.show(false)
 
   }
 }
