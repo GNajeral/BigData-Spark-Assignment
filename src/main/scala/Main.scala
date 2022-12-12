@@ -47,7 +47,7 @@ object Main {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession
       .builder()
-      .appName("Java Spark SQL 2008 dataset")
+      .appName("Big Data: Spark Practical Work")
       .master("local[12]")
       .config("spark.driver.memory","16G")
       .getOrCreate()
@@ -100,8 +100,9 @@ object Main {
 
 
     // We read the input data
-    var df = spark.read.options(Map("header" -> "true", "nanValue" -> "NA")).csv("src/main/resources/2008.csv")
-    var df_plane = spark.read.options(Map("header" -> "true", "nanValue" -> "NA")).csv("src/main/resources/plane-data.csv")
+    var df = spark.read.option("header", value = "true").csv("src/main/resources/2008.csv")
+    df = df.union(spark.read.option("header", value = "true").csv("src/main/resources/2007.csv"))
+    var df_plane = spark.read.option("header", value = "true").csv("src/main/resources/plane-data.csv")
 
 
     // We delete the forbidden columns
@@ -351,29 +352,48 @@ object Main {
     // Selectors have not been considered for cross validation since we want
     // to see and compare the performance for all the different FSS
 
-    val selector_fpr = new UnivariateFeatureSelector()
+
+    val selector_numTopFeatures = new UnivariateFeatureSelector()
       .setFeatureType("continuous")
       .setLabelType("continuous") // score function -> F-value (f_regression)
-      .setSelectionThreshold(0.05)
-      .setSelectionMode("fpr") // false positive rate
+      .setSelectionMode("numTopFeatures")
+      .setSelectionThreshold(3000)
       .setFeaturesCol("normFeatures")
       .setLabelCol("ArrDelay")
       .setOutputCol("selectedFeatures")
 
-    val selector_fdr = new UnivariateFeatureSelector()
+    val selector_percentile = new UnivariateFeatureSelector()
       .setFeatureType("continuous")
       .setLabelType("continuous") // score function -> F-value (f_regression)
-      .setSelectionThreshold(0.05)
-      .setSelectionMode("fdr") // false discovery rate
+      .setSelectionMode("percentile")
+      .setSelectionThreshold(0.7)
       .setFeaturesCol("normFeatures")
       .setLabelCol("ArrDelay")
       .setOutputCol("selectedFeatures")
 
-    val selector_fwe = new UnivariateFeatureSelector()
+    val selector_falsePositiveRate = new UnivariateFeatureSelector()
       .setFeatureType("continuous")
       .setLabelType("continuous") // score function -> F-value (f_regression)
+      .setSelectionMode("fpr")
       .setSelectionThreshold(0.05)
-      .setSelectionMode("fwe") // family-wise error rate
+      .setFeaturesCol("normFeatures")
+      .setLabelCol("ArrDelay")
+      .setOutputCol("selectedFeatures")
+
+    val selector_falseDiscoveryRate = new UnivariateFeatureSelector()
+      .setFeatureType("continuous")
+      .setLabelType("continuous") // score function -> F-value (f_regression)
+      .setSelectionMode("fdr")
+      .setSelectionThreshold(0.05)
+      .setFeaturesCol("normFeatures")
+      .setLabelCol("ArrDelay")
+      .setOutputCol("selectedFeatures")
+
+    val selector_familywiseErrorRate = new UnivariateFeatureSelector()
+      .setFeatureType("continuous")
+      .setLabelType("continuous") // score function -> F-value (f_regression)
+      .setSelectionMode("fwe")
+      .setSelectionThreshold(0.05)
       .setFeaturesCol("normFeatures")
       .setLabelCol("ArrDelay")
       .setOutputCol("selectedFeatures")
@@ -382,22 +402,38 @@ object Main {
     val vector = row(0).asInstanceOf[SparseVector]
     println(s"Number of features without FSS: ${vector.size}")
 
-    println("Performing FSS selection - false positive rate")
-    val fpr = selector_fpr.fit(df)
-    val df_fpr = fpr.transform(df)
+    println("Performing FSS selection - numTopFeatures")
+    val ntf = selector_numTopFeatures.fit(df)
+    val df_ntf = ntf.transform(df)
+    println(s"Number of features after applying numTopFeatures FSS: ${ntf.selectedFeatures.length}")
     println("Done")
-    println(s"Number of features after applying false positive rate FSS: ${fpr.selectedFeatures.length}")
-    println("Performing FSS selection - false discovery rate")
-    val fdr = selector_fdr.fit(df)
-    val df_fdr = fdr.transform(df)
-    println("Done")
-    println(s"Number of features after applying false discovery rate FSS: ${fdr.selectedFeatures.length}")
-    println("Performing FSS selection - family-wise error rate")
-    val fwe = selector_fwe.fit(df)
-    val df_fwe = fwe.transform(df)
-    println("Done")
-    println(s"Number of features after applying family-wise error FSS: ${fwe.selectedFeatures.length}")
 
+    println("Performing FSS selection - percentile")
+    val prc = selector_percentile.fit(df)
+    val df_prc = prc.transform(df)
+    println(s"Number of features after applying percentile FSS: ${prc.selectedFeatures.length}")
+    println("Done")
+
+    println("Performing FSS selection - false positive rate")
+    val fpr = selector_falsePositiveRate.fit(df)
+    val df_fpr = fpr.transform(df)
+    println(s"Number of features after applying false positive rate FSS: ${fpr.selectedFeatures.length}")
+    println("Done")
+
+    println("Performing FSS selection - false discovery rate")
+    val fdr = selector_falseDiscoveryRate.fit(df)
+    val df_fdr = fdr.transform(df)
+    println(s"Number of features after applying false discovery rate FSS: ${fdr.selectedFeatures.length}")
+    println("Done")
+
+    println("Performing FSS selection - family-wise error rate")
+    val fwe = selector_familywiseErrorRate.fit(df)
+    val df_fwe = fwe.transform(df)
+    println(s"Number of features after applying family-wise error FSS: ${fwe.selectedFeatures.length}")
+    println("Done")
+
+    val Array(trainingData_ntf, testData_ntf) = df_ntf.randomSplit(Array(0.7, 0.3), 10)
+    val Array(trainingData_prc, testData_prc) = df_prc.randomSplit(Array(0.7, 0.3), 10)
     val Array(trainingData_fpr, testData_fpr) = df_fpr.randomSplit(Array(0.7, 0.3), 10)
     val Array(trainingData_fdr, testData_fdr) = df_fdr.randomSplit(Array(0.7, 0.3), 10)
     val Array(trainingData_fwe, testData_fwe) = df_fwe.randomSplit(Array(0.7, 0.3), 10)
@@ -409,108 +445,6 @@ object Main {
      different results obtained. Specifically, the following algorithms have been applied: Linear regression,
      Generalized linear regression, Decision tree regression and Random forest regression.
      */
-
-    //-------------------LinearRegression-----------------------------------------
-    val lr = new LinearRegression()
-      .setLabelCol("ArrDelay")
-      .setFeaturesCol("selectedFeatures")
-      .setPredictionCol("predictionLR")
-      .setMaxIter(10)
-
-    val lr_paramGrid = new ParamGridBuilder()
-      .addGrid(lr.regParam, Array(0.1, 0.01))
-      .addGrid(lr.elasticNetParam, Array(1, 0.8, 0.5))
-      .build()
-
-    val lr_evaluator_rmse = new RegressionEvaluator()
-      .setLabelCol("ArrDelay")
-      .setPredictionCol("predictionLR")
-      .setMetricName("rmse")
-
-    val lr_evaluator_r2 = new RegressionEvaluator()
-      .setLabelCol("ArrDelay")
-      .setPredictionCol("predictionLR")
-      .setMetricName("r2")
-
-    val lr_cv = new CrossValidator()
-      .setEstimator(lr)
-      .setEvaluator(lr_evaluator_rmse)
-      .setEstimatorParamMaps(lr_paramGrid)
-      .setNumFolds(3)
-      .setParallelism(3)
-
-    println("-------------------------Linear Regression FPR-------------------------")
-    val lr_model_fpr = lr_cv.fit(trainingData_fpr)
-    println("Model parameters:")
-    println(lr_model_fpr.bestModel.extractParamMap())
-    val lr_predictions_fpr = lr_model_fpr.transform(testData_fpr)
-    println("ArrDelay VS predictionLR:")
-    lr_predictions_fpr.select("ArrDelay", "predictionLR").show(10, false)
-    println(s"Root Mean Squared Error = ${lr_evaluator_rmse.evaluate(lr_predictions_fpr)}")
-    println(s"R-Squared = ${lr_evaluator_r2.evaluate(lr_predictions_fpr)}")
-
-    println("-------------------------Linear Regression FDR-------------------------")
-    val lr_model_fdr = lr_cv.fit(trainingData_fdr)
-    println("Model parameters:")
-    println(lr_model_fdr.bestModel.extractParamMap())
-    val lr_predictions_fdr = lr_model_fdr.transform(testData_fdr)
-    println("ArrDelay VS predictionLR:")
-    lr_predictions_fdr.select("ArrDelay", "predictionLR").show(10, false)
-    println(s"Root Mean Squared Error = ${lr_evaluator_rmse.evaluate(lr_predictions_fdr)}")
-    println(s"R-Squared = ${lr_evaluator_r2.evaluate(lr_predictions_fdr)}")
-
-    println("-------------------------Linear Regression FWE-------------------------")
-    val lr_model_fwe = lr_cv.fit(trainingData_fwe)
-    println("Model parameters:")
-    println(lr_model_fwe.bestModel.extractParamMap())
-    val lr_predictions_fwe = lr_model_fwe.transform(testData_fwe)
-    println("ArrDelay VS predictionLR:")
-    lr_predictions_fwe.select("ArrDelay", "predictionLR").show(10, false)
-    println(s"Root Mean Squared Error = ${lr_evaluator_rmse.evaluate(lr_predictions_fwe)}")
-    println(s"R-Squared = ${lr_evaluator_r2.evaluate(lr_predictions_fwe)}")
-
-    //-------------------GeneralizedLinearRegression-----------------------------------------
-    val glr = new GeneralizedLinearRegression()
-      .setLabelCol("ArrDelay")
-      .setFeaturesCol("selectedFeatures")
-      .setPredictionCol("predictionGLR")
-      .setLink("identity")
-      .setFamily("gaussian")
-      .setMaxIter(10)
-
-    val glr_paramGrid = new ParamGridBuilder()
-      .addGrid(glr.regParam, Array(0.1, 0.01))
-      .build()
-
-    val glr_evaluator_rmse = new RegressionEvaluator()
-      .setLabelCol("ArrDelay")
-      .setPredictionCol("predictionGLR")
-      .setMetricName("rmse")
-
-    val glr_evaluator_r2 = new RegressionEvaluator()
-      .setLabelCol("ArrDelay")
-      .setPredictionCol("predictionGLR")
-      .setMetricName("r2")
-
-    val glr_cv = new CrossValidator()
-      .setEstimator(glr)
-      .setEvaluator(glr_evaluator_rmse)
-      .setEstimatorParamMaps(glr_paramGrid)
-      .setNumFolds(3)
-      .setParallelism(3)
-
-    // No False Positive Rate and False Discovery Rate FSS for Generalized Linear Regression
-    // since the number of features has to be <= 4096
-
-    println("-------------------------Generalized Linear Regression FWE-------------------------")
-    val glr_model_fwe = glr_cv.fit(trainingData_fwe)
-    println("Model parameters:")
-    println(glr_model_fwe.bestModel.extractParamMap())
-    val glr_predictions_fwe = glr_model_fwe.transform(testData_fwe)
-    println("ArrDelay VS predictionGLR:")
-    glr_predictions_fwe.select("ArrDelay", "predictionGLR").show(10, false)
-    println(s"Root Mean Squared Error = ${glr_evaluator_rmse.evaluate(glr_predictions_fwe)}")
-    println(s"R-Squared = ${glr_evaluator_r2.evaluate(glr_predictions_fwe)}")
 
     //-------------------DecisionTreeRegression-----------------------------------------
     val dtr = new DecisionTreeRegressor()
@@ -534,6 +468,26 @@ object Main {
       .setEstimatorParamMaps(new ParamGridBuilder().build())
       .setNumFolds(3)
       .setParallelism(3)
+
+    println("-------------------------Decision Tree Regression NTF-------------------------")
+    val dtr_model_ntf = dtr_cv.fit(trainingData_ntf)
+    println("Model parameters:")
+    println(dtr_model_ntf.bestModel.extractParamMap())
+    val dtr_predictions_ntf = dtr_model_ntf.transform(testData_ntf)
+    println("ArrDelay VS predictionDTR:")
+    dtr_predictions_ntf.select("ArrDelay", "predictionDTR").show(10, false)
+    println(s"Root Mean Squared Error = ${dtr_evaluator_rmse.evaluate(dtr_predictions_ntf)}")
+    println(s"R-Squared = ${dtr_evaluator_r2.evaluate(dtr_predictions_ntf)}")
+
+    println("-------------------------Decision Tree Regression PRC-------------------------")
+    val dtr_model_prc = dtr_cv.fit(trainingData_prc)
+    println("Model parameters:")
+    println(dtr_model_prc.bestModel.extractParamMap())
+    val dtr_predictions_prc = dtr_model_prc.transform(testData_prc)
+    println("ArrDelay VS predictionDTR:")
+    dtr_predictions_prc.select("ArrDelay", "predictionDTR").show(10, false)
+    println(s"Root Mean Squared Error = ${dtr_evaluator_rmse.evaluate(dtr_predictions_prc)}")
+    println(s"R-Squared = ${dtr_evaluator_r2.evaluate(dtr_predictions_prc)}")
 
     println("-------------------------Decision Tree Regression FPR-------------------------")
     val dtr_model_fpr = dtr_cv.fit(trainingData_fpr)
@@ -571,10 +525,8 @@ object Main {
     // RMSE measures the differences between predicted values by the model and the actual values.
     println("------------------------Summary-------------------------")
     val summaryDF = Seq(
-      ("LINEAR REGRESSION - False Positive Rate Selection", lr_evaluator_rmse.evaluate(lr_predictions_fpr), lr_evaluator_r2.evaluate(lr_predictions_fpr)),
-      ("LINEAR REGRESSION - False Discovery Rate Selection", lr_evaluator_rmse.evaluate(lr_predictions_fdr), lr_evaluator_r2.evaluate(lr_predictions_fdr)),
-      ("LINEAR REGRESSION - Family-Wise Error Rate Selection", lr_evaluator_rmse.evaluate(lr_predictions_fwe), lr_evaluator_r2.evaluate(lr_predictions_fwe)),
-      ("GENERALIZED LINEAR REGRESSION - Family-Wise Error Rate Selection", glr_evaluator_rmse.evaluate(glr_predictions_fwe), glr_evaluator_r2.evaluate(glr_predictions_fwe)),
+      ("DECISION TREE REGRESSION - Num Top Features Selection", dtr_evaluator_rmse.evaluate(dtr_predictions_ntf), dtr_evaluator_r2.evaluate(dtr_predictions_ntf)),
+      ("DECISION TREE REGRESSION - Percentile Selection", dtr_evaluator_rmse.evaluate(dtr_predictions_prc), dtr_evaluator_r2.evaluate(dtr_predictions_prc)),
       ("DECISION TREE REGRESSION - False Positive Rate Selection", dtr_evaluator_rmse.evaluate(dtr_predictions_fpr), dtr_evaluator_r2.evaluate(dtr_predictions_fpr)),
       ("DECISION TREE REGRESSION - False Discovery Rate Selection", dtr_evaluator_rmse.evaluate(dtr_predictions_fdr), dtr_evaluator_r2.evaluate(dtr_predictions_fdr)),
       ("DECISION TREE REGRESSION - Family-Wise Error Rate Selection", dtr_evaluator_rmse.evaluate(dtr_predictions_fwe), dtr_evaluator_r2.evaluate(dtr_predictions_fwe)))
