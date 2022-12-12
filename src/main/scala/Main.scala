@@ -329,15 +329,18 @@ object Main {
     println()
 
 
-    // We use the pipeline 
-    println("--------------------------------- Normalizing the extracted features -----------------------------------------------")
+    // We use a pipeline in order to create a sequence of run stages
+    println("--------------------------------- Use of a pipeline -----------------------------------------------")
     val pipeline = new Pipeline()
       .setStages(Array(indexer, ohe, assembler, normalizer))
     df = pipeline.fit(df).transform(df)
     df.printSchema()
+    println("--------------------------------- Done -----------------------------------------------")
+    println()
 
-    df = df.drop(indexed_columns: _*)
-    df = df.drop(columns_to_index: _*)
+
+    df = df.drop(indexed_columns:_*)
+    df = df.drop(columns_to_index:_*)
     df = df.drop(cat_cols:_*)
     df = df.drop(Array("FlightNum", "DepDelay", "Distance", "TaxiOut", "PlaneAge", "features"):_*)
     df.show()
