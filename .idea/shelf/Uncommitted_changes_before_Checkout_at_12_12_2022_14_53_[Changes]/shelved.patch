@@ -1,0 +1,530 @@
+Index: src/main/scala/Main.scala
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import org.apache.spark.ml.Pipeline\r\nimport org.apache.spark.ml.evaluation.RegressionEvaluator\r\nimport org.apache.spark.ml.feature.{Imputer, Normalizer, OneHotEncoder, StringIndexer, UnivariateFeatureSelector, VectorAssembler}\r\nimport org.apache.spark.ml.linalg.SparseVector\r\nimport org.apache.spark.ml.regression.{DecisionTreeRegressor, GeneralizedLinearRegression, LinearRegression, RandomForestRegressor}\r\nimport org.apache.spark.ml.tuning.{CrossValidator, ParamGridBuilder}\r\nimport org.apache.spark.sql.SparkSession\r\nimport org.apache.spark.sql.functions.{col, to_date, udf, year}\r\nimport org.apache.spark.sql.types.IntegerType\r\n\r\n\r\n\r\n\r\nobject Main {\r\n  private val replace_null_with_unknown = udf((x: String) => {\r\n    var res = new String\r\n    if (x == null || x == \"Unknow\" || x == \"None\" || x == \"\" || x == \" \") res = \"unknown\"\r\n    else res = x\r\n    res\r\n  }).asNondeterministic()\r\n\r\n  private val replace_na_with_null = udf((x: String) => {\r\n    var res = new String\r\n    if (x == \"NA\") res = null\r\n    else res = x\r\n    res\r\n  }).asNondeterministic()\r\n\r\n  private val replace_time_with_dayPart = udf((x: Integer) => {\r\n    var res = new String\r\n    if(x > 0 && x < 500) res = \"lateNight\"\r\n    if(x >= 500 && x < 800) res = \"earlyMorning\"\r\n    if(x >= 800 && x < 1200) res = \"lateMorning\"\r\n    if(x >= 1200 && x < 1400) res = \"earlyAfternoon\"\r\n    if(x >= 1400 && x < 1700) res = \"lateAfternoon\"\r\n    if(x >= 1700 && x < 1900) res = \"earlyEvening\"\r\n    if(x >= 1900 && x < 2100) res = \"lateEvening\"\r\n    if(x >= 2100 && x <= 2400) res = \"earlyNight\"\r\n    res\r\n  }).asNondeterministic()\r\n\r\n  private val replace_YMD_with_FlightDate = udf((year: Integer, month: Integer, day: Integer) => {\r\n    var res = month.toString + \"/\" + day.toString + \"/\" + year.toString\r\n    res\r\n  }).asNondeterministic()\r\n\r\n  def main(args: Array[String]): Unit = {\r\n    val spark = SparkSession\r\n      .builder()\r\n      .appName(\"Java Spark SQL 2008 dataset\")\r\n      .master(\"local[12]\")\r\n      .config(\"spark.driver.memory\",\"16G\")\r\n      .getOrCreate()\r\n\r\n    spark.sparkContext.setLogLevel(\"ERROR\")\r\n\r\n    import spark.implicits._\r\n\r\n//    val schema = new StructType()\r\n//      .add(\"Year\", IntegerType, true)\r\n//      .add(\"Month\", IntegerType, true)\r\n//      .add(\"DayofMonth\", IntegerType, true)\r\n//      .add(\"DayOfWeek\", IntegerType, true)\r\n//      .add(\"DepTime\", IntegerType, true)\r\n//      .add(\"CRSDepTime\", IntegerType, true)\r\n//      .add(\"ArrTime\", IntegerType, true)\r\n//      .add(\"CRSArrTime\", IntegerType, true)\r\n//      .add(\"UniqueCarrier\", StringType, true)\r\n//      .add(\"FlightNum\", IntegerType, true)\r\n//      .add(\"TailNum\", StringType, true)\r\n//      .add(\"ActualElapsedTime\", IntegerType, true)\r\n//      .add(\"CRSElapsedTime\", IntegerType, true)\r\n//      .add(\"AirTime\", IntegerType, true)\r\n//      .add(\"ArrDelay\", IntegerType, true)\r\n//      .add(\"DepDelay\", IntegerType, true)\r\n//      .add(\"Origin\", StringType, true)\r\n//      .add(\"Dest\", StringType, true)\r\n//      .add(\"Distance\", IntegerType, true)\r\n//      .add(\"TaxiIn\", IntegerType, true)\r\n//      .add(\"TaxiOut\", IntegerType, true)\r\n//      .add(\"Cancelled\", IntegerType, true)\r\n//      .add(\"CancellationCode\", StringType, true)\r\n//      .add(\"Diverted\", IntegerType, true)\r\n//      .add(\"CarrierDelay\", IntegerType, true)\r\n//      .add(\"WeatherDelay\", IntegerType, true)\r\n//      .add(\"NASDelay\", IntegerType, true)\r\n//      .add(\"SecurityDelay\", IntegerType, true)\r\n//      .add(\"LateAircraftDelay\", IntegerType, true)\r\n//\r\n//    val schema2 = new StructType()\r\n//      .add(\"tailNum\", StringType, true)\r\n//      .add(\"type\", StringType, true)\r\n//      .add(\"manufacturer\", StringType, true)\r\n//      .add(\"issue_date\", StringType, true)\r\n//      .add(\"model\", StringType, true)\r\n//      .add(\"status\", StringType, true)\r\n//      .add(\"aircraft_type\", StringType, true)\r\n//      .add(\"engine_type\", StringType, true)\r\n//      .add(\"year\", IntegerType, true)\r\n\r\n\r\n    // We read the input data\r\n    var df = spark.read.options(Map(\"header\" -> \"true\", \"nanValue\" -> \"NA\")).csv(\"src/main/resources/2008.csv\")\r\n    var df_plane = spark.read.options(Map(\"header\" -> \"true\", \"nanValue\" -> \"NA\")).csv(\"src/main/resources/plane-data.csv\")\r\n\r\n\r\n    // We delete the forbidden columns\r\n    println()\r\n    println(\"--------------------------------- We delete the forbidden columns -----------------------------------------------\")\r\n    val columns_to_drop = Array(\"ArrTime\", \"ActualElapsedTime\", \"AirTime\", \"TaxiIn\", \"Diverted\", \"CarrierDelay\", \"WeatherDelay\", \"NASDelay\", \"SecurityDelay\", \"LateAircraftDelay\")\r\n    df = df.drop(columns_to_drop:_*)\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // We delete the null values of the target variable as we are not going to use that values\r\n    println(\"--------------------------------- We delete the null values of \\\"ArrDelay\\\" -----------------------------------------------\")\r\n    df = df.filter(\"ArrDelay is NOT NULL AND ArrDelay NOT LIKE 'NA'\")\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // We separate our target variable from the rest of the dataset, saving it in a different one\r\n    println(\"--------------------------------- target variable -----------------------------------------------\")\r\n    println(\"'ArrDelay'\")\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // We filter the columns that can not possess negative values\r\n    println(\"--------------------------------- We filter the columns that can not possess negative values -----------------------------------------------\")\r\n    df = df.filter(\"Year > 0\")\r\n    df = df.filter(\"Month > 0\")\r\n    df = df.filter(\"DayofMonth > 0\")\r\n    df = df.filter(\"DayOfWeek > 0\")\r\n    df = df.filter(\"DepTime > 0\")\r\n    df = df.filter(\"CRSArrTime > 0\")\r\n    df = df.filter(\"Distance > 0\")\r\n    df = df.filter(\"TaxiOut > 0\")\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // We delete all the rows that contain cancelled flights, since this will not be useful for our prediction goal\r\n    println(\"--------------------------------- We delete all the rows that contain cancelled flights -----------------------------------------------\")\r\n    df = df.filter(\"Cancelled == 0\")\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // Therefore, we eliminate the \"CancellationCode\" and \"Cancelled\" columns\r\n    println(\"--------------------------------- We eliminate the \\\"CancellationCode\\\" and \\\"Cancelled\\\" columns -----------------------------------------------\")\r\n    df = df.drop(\"Cancelled\", \"CancellationCode\")\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // We delete the \"CRSDepTime\" column given that we already have enough information with the \"DepTime\" and \"DepDelay\" columns\r\n    println(\"--------------------------------- We delete the \\\"CRSDepTime\\\" column -----------------------------------------------\")\r\n    df = df.drop(\"CRSDepTime\")\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // We delete the \"CRSElapsedTime\" column since this variable seems to give the same information as the \"Distance\" column (higher distance, higher estimated time and vice versa)\r\n    println(\"--------------------------------- We delete the \\\"CRSElapsedTime\\\" column -----------------------------------------------\")\r\n    df = df.drop(\"CRSElapsedTime\")\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // We clean the \"issue_date\" column since it is going to be used later\r\n    // By doing this, we also delete the status column since it does not provide more useful information\r\n    println(\"--------------------------------- We clean the \\\"issue_date\\\" column -----------------------------------------------\")\r\n    df_plane = df_plane.filter(\"issue_date is NOT NULL AND issue_date NOT LIKE 'None'\")\r\n    df_plane = df_plane.drop(\"status\")\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // We delete the plane tailnumbers that do not have any data from plane-data dataset\r\n    println(\"--------------------------------- We delete the plane tailnumbers that do not have any data from plane-data dataset -----------------------------------------------\")\r\n    df_plane = df_plane.filter(\"type is NOT NULL AND manufacturer is NOT NULL AND model is NOT NULL AND aircraft_type is NOT NULL AND engine_type is NOT NULL AND year is NOT NULL\")\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // Renaming column \"year\" to \"year_produced\" in df_plane dataset and eliminating it since we are not going to use it\r\n    println(\"--------------------------------- Deleting column \\\"year\\\" in df_plane dataset -----------------------------------------------\")\r\n    df_plane = df_plane.withColumnRenamed(\"year\",\"year_introduced\")\r\n    df_plane = df_plane.drop(\"year_introduced\")\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // Join of the two datasets\r\n    println(\"--------------------------------- Joining both datasets -----------------------------------------------\")\r\n    df = df.join(df_plane, \"tailNum\")\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // We check for NA values in the each column of the dataset and set them to null for the imputers to do their work\r\n    println(\"--------------------------------- Checking for NA values in the dataset to set them to null -----------------------------------------------\")\r\n    for (i <- 0 until df.columns.drop(df.columns.indexOf(\"ArrDelay\")).length) {\r\n      val column = df.columns(i)\r\n      df = df.withColumn(column, replace_na_with_null(col(column)))\r\n    }\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // Numerical columns for \"mean\" imputer and \"most frequent\" imputer\r\n    val num_cols_mean = Array(\"DepTime\",\"CRSArrTime\",\"DepDelay\",\"Distance\",\"TaxiOut\")\r\n    val num_cols_mf = Array(\"FlightNum\", \"Year\",\"Month\",\"DayofMonth\",\"DayOfWeek\")\r\n\r\n\r\n    // We cast to Integer every column in order to be able to use the imputer\r\n    println(\"--------------------------------- We cast to Integer every column in order to be able to use the imputer -----------------------------------------------\")\r\n    for (i <- 0 until df.columns.length){\r\n      val colName = df.columns(i)\r\n      if (num_cols_mean.contains(colName) || num_cols_mf.contains(colName) || colName == \"ArrDelay\")\r\n        df = df.withColumn(colName,col(colName).cast(IntegerType))\r\n    }\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // We apply the \"most frequent\" imputer for the \"Year\", \"Month\", \"DayOfMonth\" and \"DayOfWeek\" columns\r\n    println(\"--------------------------------- We apply the \\\"most frequent\\\" imputer for the \\\"Year\\\",\\\"Month\\\",\\\"DayofMonth\\\" and \\\"DayOfWeek\\\" columns -----------------------------------------------\")\r\n    val imputer = new Imputer()\r\n      .setInputCols(num_cols_mf)\r\n      .setOutputCols(num_cols_mf)\r\n      .setStrategy(\"mode\")\r\n    df = imputer.fit(df).transform(df)\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // We apply the \"mean\" imputer for the rest of the numerical columns\r\n    println(\"--------------------------------- We apply the \\\"mean\\\" imputer for the \\\"DepTime\\\",\\\"CRSDepTime\\\",\\\"CRSArrTime\\\",\\\"DepDelay\\\",\\\"Distance\\\" and \\\"TaxiOut\\\" columns -----------------------------------------------\")\r\n    imputer.setInputCols(num_cols_mean).setOutputCols(num_cols_mean).setStrategy(\"mean\")\r\n    df = imputer.fit(df).transform(df)\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // We change the value of \"DepTime\" and \"CRSArrTime\" to strings containing values such as morning, night... in order to apply one hot encoder more efficiently\r\n    println(\"--------------------------------- We change the value of \\\"DepTime\\\" and \\\"CRSArrTime\\\" -----------------------------------------------\")\r\n    df = df.withColumn(\"DepTime\", replace_time_with_dayPart(col(\"DepTime\")))\r\n    df = df.withColumn(\"CRSArrTime\", replace_time_with_dayPart(col(\"CRSArrTime\")))\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // We check for null values in the categorical columns and swap them with \"unknown\"\r\n    println(\"--------------------------------- We check for null values in the categorical columns and swap them with \\\"unknown\\\" -----------------------------------------------\")\r\n    val cat_cols_df = Array(\"tailNum\", \"Dest\", \"Origin\", \"type\", \"engine_type\", \"aircraft_type\", \"model\", \"issue_date\", \"manufacturer\")\r\n    for (i <- 0 until cat_cols_df.length) {\r\n      val column = cat_cols_df(i)\r\n      df = df.withColumn(column, replace_null_with_unknown(col(column)))\r\n    }\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // We swap columns \"Year\", \"Month\" and \"DayOfMonth\" with a new column \"Date\" so we avoid one hot encoding the \"Year\" column which can have only one value\r\n    println(\"--------------------------------- We swap columns \\\"Year\\\", \\\"month\\\" and \\\"DayOfMonth\\\" with a new column \\\"Date\\\" so we avoid one hot encoding the \\\"Year\\\" column which can have only one value -----------------------------------------------\")\r\n    df = df.withColumn(\"Year\", replace_YMD_with_FlightDate(col(\"Year\"), col(\"Month\"), col(\"DayOfMonth\")))\r\n    df = df.withColumnRenamed(\"Year\", \"FlightDate\")\r\n    df = df.drop(\"Month\").drop(\"DayOfMonth\")\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // We create the column \"PlaneAge\" from the data in \"Year\" and \"issue_date\" to then remove the column \"issue_date\"\r\n    println(\"--------------------------------- We create the column \\\"PlaneAge\\\" from the data in \\\"Year\\\" and \\\"issue_date\\\" to then remove the column \\\"issue_date\\\" -----------------------------------------------\")\r\n    df = df.withColumnRenamed(\"issue_date\", \"PlaneAge\")\r\n    df = df.withColumn(\"PlaneAge\", year(to_date(col(\"FlightDate\"), \"M/d/y\")) - year(to_date(col(\"PlaneAge\"), \"M/d/y\")))\r\n\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n    df.show()\r\n\r\n\r\n    //df.repartition(1).write.option(\"header\",value = true).mode(SaveMode.Overwrite).csv(\"src/main/resources/output\")\r\n\r\n    println(\"--------------------------------- Variance of DepDelay -----------------------------------------------\")\r\n    println(df.stat.cov(\"DepDelay\", \"DepDelay\"))\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    val columns_to_index = Array(\"FlightDate\", \"DayOfWeek\", \"DepTime\", \"CRSArrTime\", \"UniqueCarrier\", \"tailNum\", \"Origin\", \"Dest\", \"type\", \"manufacturer\", \"model\", \"aircraft_type\", \"engine_type\")\r\n    val indexed_columns = Array(\"FlightDateIndexed\", \"DayOfWeekIndexed\", \"DepTimeIndexed\", \"CRSArrTimeIndexed\", \"UniqueCarrierIndexed\", \"tailNumIndexed\", \"OriginIndexed\", \"DestIndexed\", \"typeIndexed\", \"manufacturerIndexed\", \"modelIndexed\", \"aircraft_typeIndexed\", \"engine_typeIndexed\")\r\n    val cat_cols = Array(\"FlightDateCat\", \"DayOfWeekCat\", \"DepTimeCat\", \"CRSArrTimeCat\", \"UniqueCarrierCat\", \"tailNumCat\", \"OriginCat\", \"DestCat\", \"typeCat\", \"manufacturerCat\", \"modelCat\", \"aircraft_typeCat\", \"engine_typeCat\")\r\n\r\n    // Declaration of the indexer that will transform entries to integer values\r\n    println(\"--------------------------------- Declaration of the indexer that will transform entries to integer values -----------------------------------------------\")\r\n    val indexer = new StringIndexer()\r\n      .setInputCols(columns_to_index)\r\n      .setOutputCols(indexed_columns)\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    // Declaration of the one hot encoder that will process the categorical variables\r\n    println(\"--------------------------------- Declaration of the one hot encoder that will process the categorical variables -----------------------------------------------\")\r\n    val ohe = new OneHotEncoder()\r\n      .setInputCols(indexed_columns)\r\n      .setOutputCols(cat_cols)\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n    println()\r\n\r\n\r\n    val ass_cols = Array(\"FlightNum\", \"DepDelay\", \"Distance\", \"TaxiOut\", \"PlaneAge\") ++ cat_cols\r\n\r\n    // Declaration of the assembler that will extract the features from our variables\r\n    println(\"--------------------------------- Extracting features from our data -----------------------------------------------\")\r\n    val assembler = new VectorAssembler()\r\n      .setInputCols(ass_cols)\r\n      .setOutputCol(\"features\")\r\n\r\n\r\n    // Normalizing the extracted features\r\n    println(\"--------------------------------- Normalizing the extracted features -----------------------------------------------\")\r\n    val normalizer = new Normalizer()\r\n      .setInputCol(\"features\")\r\n      .setOutputCol(\"normFeatures\")\r\n      .setP(1.0)\r\n\r\n\r\n    val pipeline = new Pipeline()\r\n      .setStages(Array(indexer, ohe, assembler, normalizer))\r\n    df = pipeline.fit(df).transform(df)\r\n    df.printSchema()\r\n\r\n    df = df.drop(indexed_columns: _*)\r\n    df = df.drop(columns_to_index: _*)\r\n    df = df.drop(cat_cols:_*)\r\n    df = df.drop(Array(\"FlightNum\", \"DepDelay\", \"Distance\", \"TaxiOut\", \"PlaneAge\", \"features\"):_*)\r\n    df.show()\r\n\r\n\r\n    //-------------------FSS-----------------------------------------\r\n\r\n    // In order to set up the models, 3-fold cross validation has been applied\r\n    // After fitting the best model for all the algorithms, the models have been evaluated\r\n    // with a test set for each FSS\r\n\r\n    // Selectors have not been considered for cross validation since we want\r\n    // to see and compare the performance for all the different FSS\r\n\r\n    val selector_fpr = new UnivariateFeatureSelector()\r\n      .setFeatureType(\"continuous\")\r\n      .setLabelType(\"continuous\") // score function -> F-value (f_regression)\r\n      .setSelectionThreshold(0.05)\r\n      .setSelectionMode(\"fpr\") // false positive rate\r\n      .setFeaturesCol(\"normFeatures\")\r\n      .setLabelCol(\"ArrDelay\")\r\n      .setOutputCol(\"selectedFeatures\")\r\n\r\n    val selector_fdr = new UnivariateFeatureSelector()\r\n      .setFeatureType(\"continuous\")\r\n      .setLabelType(\"continuous\") // score function -> F-value (f_regression)\r\n      .setSelectionThreshold(0.05)\r\n      .setSelectionMode(\"fdr\") // false discovery rate\r\n      .setFeaturesCol(\"normFeatures\")\r\n      .setLabelCol(\"ArrDelay\")\r\n      .setOutputCol(\"selectedFeatures\")\r\n\r\n    val selector_fwe = new UnivariateFeatureSelector()\r\n      .setFeatureType(\"continuous\")\r\n      .setLabelType(\"continuous\") // score function -> F-value (f_regression)\r\n      .setSelectionThreshold(0.05)\r\n      .setSelectionMode(\"fwe\") // family-wise error rate\r\n      .setFeaturesCol(\"normFeatures\")\r\n      .setLabelCol(\"ArrDelay\")\r\n      .setOutputCol(\"selectedFeatures\")\r\n\r\n    val row = df.select(\"normFeatures\").head\r\n    val vector = row(0).asInstanceOf[SparseVector]\r\n    println(s\"Number of features without FSS: ${vector.size}\")\r\n\r\n    println(\"Performing FSS selection - false positive rate\")\r\n    val fpr = selector_fpr.fit(df)\r\n    val df_fpr = fpr.transform(df)\r\n    println(\"Done\")\r\n    println(s\"Number of features after applying false positive rate FSS: ${fpr.selectedFeatures.length}\")\r\n    println(\"Performing FSS selection - false discovery rate\")\r\n    val fdr = selector_fdr.fit(df)\r\n    val df_fdr = fdr.transform(df)\r\n    println(\"Done\")\r\n    println(s\"Number of features after applying false discovery rate FSS: ${fdr.selectedFeatures.length}\")\r\n    println(\"Performing FSS selection - family-wise error rate\")\r\n    val fwe = selector_fwe.fit(df)\r\n    val df_fwe = fwe.transform(df)\r\n    println(\"Done\")\r\n    println(s\"Number of features after applying family-wise error FSS: ${fwe.selectedFeatures.length}\")\r\n\r\n    val Array(trainingData_fpr, testData_fpr) = df_fpr.randomSplit(Array(0.7, 0.3), 10)\r\n    val Array(trainingData_fdr, testData_fdr) = df_fdr.randomSplit(Array(0.7, 0.3), 10)\r\n    val Array(trainingData_fwe, testData_fwe) = df_fwe.randomSplit(Array(0.7, 0.3), 10)\r\n\r\n    /*\r\n     As it is a regression problem, that is, explaining or predicting the value of a continuous variable,\r\n     we have tried to apply many algorithms within the family of regression algorithms\r\n     (also trying not to extend the execution too much) and then compare the\r\n     different results obtained. Specifically, the following algorithms have been applied: Linear regression,\r\n     Generalized linear regression, Decision tree regression and Random forest regression.\r\n     */\r\n\r\n    //-------------------LinearRegression-----------------------------------------\r\n    val lr = new LinearRegression()\r\n      .setLabelCol(\"ArrDelay\")\r\n      .setFeaturesCol(\"selectedFeatures\")\r\n      .setPredictionCol(\"predictionLR\")\r\n      .setMaxIter(10)\r\n\r\n    val lr_paramGrid = new ParamGridBuilder()\r\n      .addGrid(lr.regParam, Array(0.1, 0.01))\r\n      .addGrid(lr.elasticNetParam, Array(1, 0.8, 0.5))\r\n      .build()\r\n\r\n    val lr_evaluator_rmse = new RegressionEvaluator()\r\n      .setLabelCol(\"ArrDelay\")\r\n      .setPredictionCol(\"predictionLR\")\r\n      .setMetricName(\"rmse\")\r\n\r\n    val lr_evaluator_r2 = new RegressionEvaluator()\r\n      .setLabelCol(\"ArrDelay\")\r\n      .setPredictionCol(\"predictionLR\")\r\n      .setMetricName(\"r2\")\r\n\r\n    val lr_cv = new CrossValidator()\r\n      .setEstimator(lr)\r\n      .setEvaluator(lr_evaluator_rmse)\r\n      .setEstimatorParamMaps(lr_paramGrid)\r\n      .setNumFolds(3)\r\n      .setParallelism(3)\r\n\r\n    println(\"-------------------------Linear Regression FPR-------------------------\")\r\n    val lr_model_fpr = lr_cv.fit(trainingData_fpr)\r\n    println(\"Model parameters:\")\r\n    println(lr_model_fpr.bestModel.extractParamMap())\r\n    val lr_predictions_fpr = lr_model_fpr.transform(testData_fpr)\r\n    println(\"ArrDelay VS predictionLR:\")\r\n    lr_predictions_fpr.select(\"ArrDelay\", \"predictionLR\").show(10, false)\r\n    println(s\"Root Mean Squared Error = ${lr_evaluator_rmse.evaluate(lr_predictions_fpr)}\")\r\n    println(s\"R-Squared = ${lr_evaluator_r2.evaluate(lr_predictions_fpr)}\")\r\n\r\n    println(\"-------------------------Linear Regression FDR-------------------------\")\r\n    val lr_model_fdr = lr_cv.fit(trainingData_fdr)\r\n    println(\"Model parameters:\")\r\n    println(lr_model_fdr.bestModel.extractParamMap())\r\n    val lr_predictions_fdr = lr_model_fdr.transform(testData_fdr)\r\n    println(\"ArrDelay VS predictionLR:\")\r\n    lr_predictions_fdr.select(\"ArrDelay\", \"predictionLR\").show(10, false)\r\n    println(s\"Root Mean Squared Error = ${lr_evaluator_rmse.evaluate(lr_predictions_fdr)}\")\r\n    println(s\"R-Squared = ${lr_evaluator_r2.evaluate(lr_predictions_fdr)}\")\r\n\r\n    println(\"-------------------------Linear Regression FWE-------------------------\")\r\n    val lr_model_fwe = lr_cv.fit(trainingData_fwe)\r\n    println(\"Model parameters:\")\r\n    println(lr_model_fwe.bestModel.extractParamMap())\r\n    val lr_predictions_fwe = lr_model_fwe.transform(testData_fwe)\r\n    println(\"ArrDelay VS predictionLR:\")\r\n    lr_predictions_fwe.select(\"ArrDelay\", \"predictionLR\").show(10, false)\r\n    println(s\"Root Mean Squared Error = ${lr_evaluator_rmse.evaluate(lr_predictions_fwe)}\")\r\n    println(s\"R-Squared = ${lr_evaluator_r2.evaluate(lr_predictions_fwe)}\")\r\n\r\n    //-------------------GeneralizedLinearRegression-----------------------------------------\r\n    val glr = new GeneralizedLinearRegression()\r\n      .setLabelCol(\"ArrDelay\")\r\n      .setFeaturesCol(\"selectedFeatures\")\r\n      .setPredictionCol(\"predictionGLR\")\r\n      .setLink(\"identity\")\r\n      .setFamily(\"gaussian\")\r\n      .setMaxIter(10)\r\n\r\n    val glr_paramGrid = new ParamGridBuilder()\r\n      .addGrid(glr.regParam, Array(0.1, 0.01))\r\n      .build()\r\n\r\n    val glr_evaluator_rmse = new RegressionEvaluator()\r\n      .setLabelCol(\"ArrDelay\")\r\n      .setPredictionCol(\"predictionGLR\")\r\n      .setMetricName(\"rmse\")\r\n\r\n    val glr_evaluator_r2 = new RegressionEvaluator()\r\n      .setLabelCol(\"ArrDelay\")\r\n      .setPredictionCol(\"predictionGLR\")\r\n      .setMetricName(\"r2\")\r\n\r\n    val glr_cv = new CrossValidator()\r\n      .setEstimator(glr)\r\n      .setEvaluator(glr_evaluator_rmse)\r\n      .setEstimatorParamMaps(glr_paramGrid)\r\n      .setNumFolds(3)\r\n      .setParallelism(3)\r\n\r\n    // No False Positive Rate and False Discovery Rate FSS for Generalized Linear Regression\r\n    // since the number of features has to be <= 4096\r\n\r\n    println(\"-------------------------Generalized Linear Regression FWE-------------------------\")\r\n    val glr_model_fwe = glr_cv.fit(trainingData_fwe)\r\n    println(\"Model parameters:\")\r\n    println(glr_model_fwe.bestModel.extractParamMap())\r\n    val glr_predictions_fwe = glr_model_fwe.transform(testData_fwe)\r\n    println(\"ArrDelay VS predictionGLR:\")\r\n    glr_predictions_fwe.select(\"ArrDelay\", \"predictionGLR\").show(10, false)\r\n    println(s\"Root Mean Squared Error = ${glr_evaluator_rmse.evaluate(glr_predictions_fwe)}\")\r\n    println(s\"R-Squared = ${glr_evaluator_r2.evaluate(glr_predictions_fwe)}\")\r\n\r\n    //-------------------DecisionTreeRegression-----------------------------------------\r\n    val dtr = new DecisionTreeRegressor()\r\n      .setLabelCol(\"ArrDelay\")\r\n      .setFeaturesCol(\"selectedFeatures\")\r\n      .setPredictionCol(\"predictionDTR\")\r\n\r\n    val dtr_evaluator_rmse = new RegressionEvaluator()\r\n      .setLabelCol(\"ArrDelay\")\r\n      .setPredictionCol(\"predictionDTR\")\r\n      .setMetricName(\"rmse\")\r\n\r\n    val dtr_evaluator_r2 = new RegressionEvaluator()\r\n      .setLabelCol(\"ArrDelay\")\r\n      .setPredictionCol(\"predictionDTR\")\r\n      .setMetricName(\"r2\")\r\n\r\n    val dtr_cv = new CrossValidator()\r\n      .setEstimator(dtr)\r\n      .setEvaluator(dtr_evaluator_rmse)\r\n      .setEstimatorParamMaps(new ParamGridBuilder().build())\r\n      .setNumFolds(3)\r\n      .setParallelism(3)\r\n\r\n    println(\"-------------------------Decision Tree Regression FPR-------------------------\")\r\n    val dtr_model_fpr = dtr_cv.fit(trainingData_fpr)\r\n    println(\"Model parameters:\")\r\n    println(dtr_model_fpr.bestModel.extractParamMap())\r\n    val dtr_predictions_fpr = dtr_model_fpr.transform(testData_fpr)\r\n    println(\"ArrDelay VS predictionDTR:\")\r\n    dtr_predictions_fpr.select(\"ArrDelay\", \"predictionDTR\").show(10, false)\r\n    println(s\"Root Mean Squared Error = ${dtr_evaluator_rmse.evaluate(dtr_predictions_fpr)}\")\r\n    println(s\"R-Squared = ${dtr_evaluator_r2.evaluate(dtr_predictions_fpr)}\")\r\n\r\n    println(\"-------------------------Decision Tree Regression FDR-------------------------\")\r\n    val dtr_model_fdr = dtr_cv.fit(trainingData_fdr)\r\n    println(\"Model parameters:\")\r\n    println(dtr_model_fdr.bestModel.extractParamMap())\r\n    val dtr_predictions_fdr = dtr_model_fdr.transform(testData_fdr)\r\n    println(\"ArrDelay VS predictionDTR:\")\r\n    dtr_predictions_fdr.select(\"ArrDelay\", \"predictionDTR\").show(10, false)\r\n    println(s\"Root Mean Squared Error = ${dtr_evaluator_rmse.evaluate(dtr_predictions_fdr)}\")\r\n    println(s\"R-Squared = ${dtr_evaluator_r2.evaluate(dtr_predictions_fdr)}\")\r\n\r\n    println(\"-------------------------Decision Tree Regression FWE-------------------------\")\r\n    val dtr_model_fwe = dtr_cv.fit(trainingData_fwe)\r\n    println(\"Model parameters:\")\r\n    println(dtr_model_fwe.bestModel.extractParamMap())\r\n    val dtr_predictions_fwe = dtr_model_fwe.transform(testData_fwe)\r\n    println(\"ArrDelay VS predictionDTR:\")\r\n    dtr_predictions_fwe.select(\"ArrDelay\", \"predictionDTR\").show(10, false)\r\n    println(s\"Root Mean Squared Error = ${dtr_evaluator_rmse.evaluate(dtr_predictions_fwe)}\")\r\n    println(s\"R-Squared = ${dtr_evaluator_r2.evaluate(dtr_predictions_fwe)}\")\r\n\r\n\r\n    // Summary table with RMSE and R2 measures for all the trained, validated and evaluated models\r\n    // R2 measures the variability of the dependent variable (ArrDelay) that is explained by the predictors (must be independent variables)\r\n    // RMSE measures the differences between predicted values by the model and the actual values.\r\n    println(\"------------------------Summary-------------------------\")\r\n    val summaryDF = Seq(\r\n      (\"LINEAR REGRESSION - False Positive Rate Selection\", lr_evaluator_rmse.evaluate(lr_predictions_fpr), lr_evaluator_r2.evaluate(lr_predictions_fpr)),\r\n      (\"LINEAR REGRESSION - False Discovery Rate Selection\", lr_evaluator_rmse.evaluate(lr_predictions_fdr), lr_evaluator_r2.evaluate(lr_predictions_fdr)),\r\n      (\"LINEAR REGRESSION - Family-Wise Error Rate Selection\", lr_evaluator_rmse.evaluate(lr_predictions_fwe), lr_evaluator_r2.evaluate(lr_predictions_fwe)),\r\n      (\"GENERALIZED LINEAR REGRESSION - Family-Wise Error Rate Selection\", glr_evaluator_rmse.evaluate(glr_predictions_fwe), glr_evaluator_r2.evaluate(glr_predictions_fwe)),\r\n      (\"DECISION TREE REGRESSION - False Positive Rate Selection\", dtr_evaluator_rmse.evaluate(dtr_predictions_fpr), dtr_evaluator_r2.evaluate(dtr_predictions_fpr)),\r\n      (\"DECISION TREE REGRESSION - False Discovery Rate Selection\", dtr_evaluator_rmse.evaluate(dtr_predictions_fdr), dtr_evaluator_r2.evaluate(dtr_predictions_fdr)),\r\n      (\"DECISION TREE REGRESSION - Family-Wise Error Rate Selection\", dtr_evaluator_rmse.evaluate(dtr_predictions_fwe), dtr_evaluator_r2.evaluate(dtr_predictions_fwe)))\r\n      .toDF(\"Algorithm\", \"RMSE\", \"R2\")\r\n\r\n    summaryDF.show(false)\r\n\r\n//    println(\"--------------------------------- Separate data in train and test -----------------------------------------------\")\r\n//    val Array(trainingData, testData) = df.randomSplit(Array(0.7, 0.3), 10)\r\n//    println(\"--------------------------------- Done -----------------------------------------------\")\r\n//    println()\r\n//\r\n//\r\n//    println(\"--------------------------------- LinearRegression Declaration -----------------------------------------------\")\r\n//    val linearRegression = new LinearRegression()\r\n//      .setFeaturesCol(\"normFeatures\")\r\n//      .setLabelCol(\"ArrDelay\")\r\n//      .setPredictionCol(\"predictionLR\")\r\n//      .setMaxIter(10)\r\n//\r\n//    val linearRegression_paramGrid = new ParamGridBuilder()\r\n//      .addGrid(linearRegression.regParam, Array(0.1, 0.01))\r\n//      .addGrid(linearRegression.elasticNetParam, Array(1, 0.8, 0.5))\r\n//      .build()\r\n//\r\n//    val linearRegression_evaluator_rmse = new RegressionEvaluator()\r\n//      .setLabelCol(\"ArrDelay\")\r\n//      .setPredictionCol(\"predictionLR\")\r\n//      .setMetricName(\"rmse\")\r\n//\r\n//    val linearRegression_evaluator_r2 = new RegressionEvaluator()\r\n//      .setLabelCol(\"ArrDelay\")\r\n//      .setPredictionCol(\"predictionLR\")\r\n//      .setMetricName(\"r2\")\r\n//\r\n//    val linearRegression_cv = new CrossValidator()\r\n//      .setEstimator(linearRegression)\r\n//      .setEvaluator(linearRegression_evaluator_rmse)\r\n//      .setEstimatorParamMaps(linearRegression_paramGrid)\r\n//      .setNumFolds(3)\r\n//      .setParallelism(3)\r\n//\r\n//    println(\"--------------------------------- Done -----------------------------------------------\")\r\n//    println()\r\n//\r\n//    println(\"--------------------------------- LinearRegression Training -----------------------------------------------\")\r\n//    val linearRegressionModel = linearRegression_cv.fit(trainingData)\r\n//\r\n//    println(\"Model parameters:\")\r\n//    println(linearRegressionModel.bestModel.extractParamMap())\r\n//    val linearRegression_predictions = linearRegressionModel.transform(testData)\r\n//    println(\"ArrDelay VS predictionLR:\")\r\n//    linearRegression_predictions.select(\"ArrDelay\", \"predictionLR\").show(10, false)\r\n//    println(s\"Root Mean Squared Error = ${linearRegression_evaluator_rmse.evaluate(linearRegression_predictions)}\")\r\n//    println(s\"R-Squared = ${linearRegression_evaluator_r2.evaluate(linearRegression_predictions)}\")\r\n//\r\n//    //-------------------DecisionTreeRegression-----------------------------------------\r\n//    val decisionTreeRegression = new DecisionTreeRegressor()\r\n//      .setLabelCol(\"ArrDelay\")\r\n//      .setFeaturesCol(\"normFeatures\")\r\n//      .setPredictionCol(\"predictionDTR\")\r\n//\r\n//    val decisionTreeRegression_evaluator_rmse = new RegressionEvaluator()\r\n//      .setLabelCol(\"ArrDelay\")\r\n//      .setPredictionCol(\"predictionDTR\")\r\n//      .setMetricName(\"rmse\")\r\n//\r\n//    val decisionTreeRegression_evaluator_r2 = new RegressionEvaluator()\r\n//      .setLabelCol(\"ArrDelay\")\r\n//      .setPredictionCol(\"predictionDTR\")\r\n//      .setMetricName(\"r2\")\r\n//\r\n//    val decissionTreeRegression_cv = new CrossValidator()\r\n//      .setEstimator(decisionTreeRegression)\r\n//      .setEvaluator(decisionTreeRegression_evaluator_rmse)\r\n//      .setEstimatorParamMaps(new ParamGridBuilder().build())\r\n//      .setNumFolds(3)\r\n//      .setParallelism(3)\r\n//\r\n//\r\n//    println(\"------------------------- Decision Tree Regression -------------------------\")\r\n//    val decissionTree_model = decissionTreeRegression_cv.fit(trainingData)\r\n//    println(\"Model parameters:\")\r\n//    println(decissionTree_model.bestModel.extractParamMap())\r\n//    val decisionTreeRegression_predictions = decissionTree_model.transform(testData)\r\n//    println(\"ArrDelay VS predictionDTR:\")\r\n//    decisionTreeRegression_predictions.select(\"ArrDelay\", \"predictionDTR\").show(10, false)\r\n//    println(s\"Root Mean Squared Error = ${decisionTreeRegression_evaluator_rmse.evaluate(decisionTreeRegression_predictions)}\")\r\n//    println(s\"R-Squared = ${decisionTreeRegression_evaluator_r2.evaluate(decisionTreeRegression_predictions)}\")\r\n//\r\n//\r\n//    //-------------------RandomForestRegression-----------------------------------------\r\n//    val randomForestRegressor = new RandomForestRegressor()\r\n//      .setLabelCol(\"ArrDelay\")\r\n//      .setFeaturesCol(\"normFeatures\")\r\n//      .setPredictionCol(\"predictionRFR\")\r\n//\r\n//    val randomForestRegressor_evaluator_rmse = new RegressionEvaluator()\r\n//      .setLabelCol(\"ArrDelay\")\r\n//      .setPredictionCol(\"predictionRFR\")\r\n//      .setMetricName(\"rmse\")\r\n//\r\n//    val randomForestRegressor_evaluator_r2 = new RegressionEvaluator()\r\n//      .setLabelCol(\"ArrDelay\")\r\n//      .setPredictionCol(\"predictionRFR\")\r\n//      .setMetricName(\"r2\")\r\n//\r\n//    val randomForestRegressor_cv = new CrossValidator()\r\n//      .setEstimator(randomForestRegressor)\r\n//      .setEvaluator(randomForestRegressor_evaluator_rmse)\r\n//      .setEstimatorParamMaps(new ParamGridBuilder().build())\r\n//      .setNumFolds(3)\r\n//      .setParallelism(3)\r\n//\r\n//    println(\"------------------------Random Forest Regression FPR-------------------------\")\r\n//    val randomForestRegressor_model = randomForestRegressor_cv.fit(trainingData)\r\n//    println(\"Model parameters:\")\r\n//    println(randomForestRegressor_model.bestModel.extractParamMap())\r\n//    val randomForestRegressor_predictions = randomForestRegressor_model.transform(testData)\r\n//    println(\"ArrDelay VS predictionRFR:\")\r\n//    randomForestRegressor_predictions.select(\"normFeatures\", \"ArrDelay\", \"predictionRFR\").show(10, false)\r\n//    println(s\"Root Mean Squared Error = ${randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions)}\")\r\n//    println(s\"R-Squared = ${randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)}\")\r\n//\r\n//\r\n//    println(\"------------------------Summary-------------------------\")\r\n//    val summaryDF = Seq(\r\n//      (\"LINEAR REGRESSION\", linearRegression_evaluator_rmse.evaluate(linearRegression_predictions), linearRegression_evaluator_r2.evaluate(linearRegression_predictions)),\r\n//      (\"DECISION TREE REGRESSION\", decisionTreeRegression_evaluator_rmse.evaluate(decisionTreeRegression_predictions), decisionTreeRegression_evaluator_r2.evaluate(decisionTreeRegression_predictions)),\r\n//      (\"RANDOM FOREST REGRESSION\", randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions), randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)))\r\n//      .toDF(\"Algorithm\", \"RMSE\", \"R2\")\r\n//\r\n//    summaryDF.show(false)\r\n\r\n  }\r\n}\r\n\r\n/*\r\n    // We check for missing numerical values in the each column of the dataset\r\n    println(\"--------------------------------- We check for missing numerical values in the each column of the dataset -----------------------------------------------\")\r\n    for (i <- 0 until df.columns.length) {\r\n      val column = df.columns(i)\r\n      println(column)\r\n      df.filter(col(column).contains(\"NA\")).show()\r\n    }\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n\r\n    // We check for missing numerical values in the each column of the dataset\r\n    println(\"--------------------------------- We check for missing numerical values in the each column of the dataset -----------------------------------------------\")\r\n    val plane_cols_mf = Array(\"type\", \"engine_type\", \"aircraft_type\", \"model\", \"manufacturer\")\r\n    for (i <- 0 until plane_cols_mf.length) {\r\n      val column = plane_cols_mf(i)\r\n      println(column)\r\n      df.filter(col(column).contains(\"NA\")).show()\r\n      df.filter(column + \" is NULL OR \" + column + \" LIKE 'None'\").show()\r\n    }\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n\r\n    // Categorical columns from the plane-data.csv for the \"mean\" imputer and the \"most frequent\" imputer\r\n    println(\"--------------------------------- Imputing unknown value for nulls in categorical variables -----------------------------------------------\")\r\n    println(\"--------------------------------- Done -----------------------------------------------\")\r\n\r\n    // Change the name of the columns for the sake of the code comprehension\r\n    for (i <- 0 until df.columns.length) {\r\n      var colName = df.columns(i)\r\n      var newColName = df.select(colName).first.getString(0)\r\n      df = df.withColumnRenamed(colName, newColName)\r\n    }\r\n\r\n    // We delete the first row, as we do not need it anymore, given the fact that we already renamed each column\r\n    val first_row = df.first()\r\n    df = df.filter(row => row != first_row)\r\n */
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/scala/Main.scala b/src/main/scala/Main.scala
+--- a/src/main/scala/Main.scala	
++++ b/src/main/scala/Main.scala	
+@@ -56,47 +56,47 @@
+ 
+     import spark.implicits._
+ 
+-//    val schema = new StructType()
+-//      .add("Year", IntegerType, true)
+-//      .add("Month", IntegerType, true)
+-//      .add("DayofMonth", IntegerType, true)
+-//      .add("DayOfWeek", IntegerType, true)
+-//      .add("DepTime", IntegerType, true)
+-//      .add("CRSDepTime", IntegerType, true)
+-//      .add("ArrTime", IntegerType, true)
+-//      .add("CRSArrTime", IntegerType, true)
+-//      .add("UniqueCarrier", StringType, true)
+-//      .add("FlightNum", IntegerType, true)
+-//      .add("TailNum", StringType, true)
+-//      .add("ActualElapsedTime", IntegerType, true)
+-//      .add("CRSElapsedTime", IntegerType, true)
+-//      .add("AirTime", IntegerType, true)
+-//      .add("ArrDelay", IntegerType, true)
+-//      .add("DepDelay", IntegerType, true)
+-//      .add("Origin", StringType, true)
+-//      .add("Dest", StringType, true)
+-//      .add("Distance", IntegerType, true)
+-//      .add("TaxiIn", IntegerType, true)
+-//      .add("TaxiOut", IntegerType, true)
+-//      .add("Cancelled", IntegerType, true)
+-//      .add("CancellationCode", StringType, true)
+-//      .add("Diverted", IntegerType, true)
+-//      .add("CarrierDelay", IntegerType, true)
+-//      .add("WeatherDelay", IntegerType, true)
+-//      .add("NASDelay", IntegerType, true)
+-//      .add("SecurityDelay", IntegerType, true)
+-//      .add("LateAircraftDelay", IntegerType, true)
+-//
+-//    val schema2 = new StructType()
+-//      .add("tailNum", StringType, true)
+-//      .add("type", StringType, true)
+-//      .add("manufacturer", StringType, true)
+-//      .add("issue_date", StringType, true)
+-//      .add("model", StringType, true)
+-//      .add("status", StringType, true)
+-//      .add("aircraft_type", StringType, true)
+-//      .add("engine_type", StringType, true)
+-//      .add("year", IntegerType, true)
++    //    val schema = new StructType()
++    //      .add("Year", IntegerType, true)
++    //      .add("Month", IntegerType, true)
++    //      .add("DayofMonth", IntegerType, true)
++    //      .add("DayOfWeek", IntegerType, true)
++    //      .add("DepTime", IntegerType, true)
++    //      .add("CRSDepTime", IntegerType, true)
++    //      .add("ArrTime", IntegerType, true)
++    //      .add("CRSArrTime", IntegerType, true)
++    //      .add("UniqueCarrier", StringType, true)
++    //      .add("FlightNum", IntegerType, true)
++    //      .add("TailNum", StringType, true)
++    //      .add("ActualElapsedTime", IntegerType, true)
++    //      .add("CRSElapsedTime", IntegerType, true)
++    //      .add("AirTime", IntegerType, true)
++    //      .add("ArrDelay", IntegerType, true)
++    //      .add("DepDelay", IntegerType, true)
++    //      .add("Origin", StringType, true)
++    //      .add("Dest", StringType, true)
++    //      .add("Distance", IntegerType, true)
++    //      .add("TaxiIn", IntegerType, true)
++    //      .add("TaxiOut", IntegerType, true)
++    //      .add("Cancelled", IntegerType, true)
++    //      .add("CancellationCode", StringType, true)
++    //      .add("Diverted", IntegerType, true)
++    //      .add("CarrierDelay", IntegerType, true)
++    //      .add("WeatherDelay", IntegerType, true)
++    //      .add("NASDelay", IntegerType, true)
++    //      .add("SecurityDelay", IntegerType, true)
++    //      .add("LateAircraftDelay", IntegerType, true)
++    //
++    //    val schema2 = new StructType()
++    //      .add("tailNum", StringType, true)
++    //      .add("type", StringType, true)
++    //      .add("manufacturer", StringType, true)
++    //      .add("issue_date", StringType, true)
++    //      .add("model", StringType, true)
++    //      .add("status", StringType, true)
++    //      .add("aircraft_type", StringType, true)
++    //      .add("engine_type", StringType, true)
++    //      .add("year", IntegerType, true)
+ 
+ 
+     // We read the input data
+@@ -582,132 +582,132 @@
+ 
+     summaryDF.show(false)
+ 
+-//    println("--------------------------------- Separate data in train and test -----------------------------------------------")
+-//    val Array(trainingData, testData) = df.randomSplit(Array(0.7, 0.3), 10)
+-//    println("--------------------------------- Done -----------------------------------------------")
+-//    println()
+-//
+-//
+-//    println("--------------------------------- LinearRegression Declaration -----------------------------------------------")
+-//    val linearRegression = new LinearRegression()
+-//      .setFeaturesCol("normFeatures")
+-//      .setLabelCol("ArrDelay")
+-//      .setPredictionCol("predictionLR")
+-//      .setMaxIter(10)
+-//
+-//    val linearRegression_paramGrid = new ParamGridBuilder()
+-//      .addGrid(linearRegression.regParam, Array(0.1, 0.01))
+-//      .addGrid(linearRegression.elasticNetParam, Array(1, 0.8, 0.5))
+-//      .build()
+-//
+-//    val linearRegression_evaluator_rmse = new RegressionEvaluator()
+-//      .setLabelCol("ArrDelay")
+-//      .setPredictionCol("predictionLR")
+-//      .setMetricName("rmse")
+-//
+-//    val linearRegression_evaluator_r2 = new RegressionEvaluator()
+-//      .setLabelCol("ArrDelay")
+-//      .setPredictionCol("predictionLR")
+-//      .setMetricName("r2")
+-//
+-//    val linearRegression_cv = new CrossValidator()
+-//      .setEstimator(linearRegression)
+-//      .setEvaluator(linearRegression_evaluator_rmse)
+-//      .setEstimatorParamMaps(linearRegression_paramGrid)
+-//      .setNumFolds(3)
+-//      .setParallelism(3)
+-//
+-//    println("--------------------------------- Done -----------------------------------------------")
+-//    println()
+-//
+-//    println("--------------------------------- LinearRegression Training -----------------------------------------------")
+-//    val linearRegressionModel = linearRegression_cv.fit(trainingData)
+-//
+-//    println("Model parameters:")
+-//    println(linearRegressionModel.bestModel.extractParamMap())
+-//    val linearRegression_predictions = linearRegressionModel.transform(testData)
+-//    println("ArrDelay VS predictionLR:")
+-//    linearRegression_predictions.select("ArrDelay", "predictionLR").show(10, false)
+-//    println(s"Root Mean Squared Error = ${linearRegression_evaluator_rmse.evaluate(linearRegression_predictions)}")
+-//    println(s"R-Squared = ${linearRegression_evaluator_r2.evaluate(linearRegression_predictions)}")
+-//
+-//    //-------------------DecisionTreeRegression-----------------------------------------
+-//    val decisionTreeRegression = new DecisionTreeRegressor()
+-//      .setLabelCol("ArrDelay")
+-//      .setFeaturesCol("normFeatures")
+-//      .setPredictionCol("predictionDTR")
+-//
+-//    val decisionTreeRegression_evaluator_rmse = new RegressionEvaluator()
+-//      .setLabelCol("ArrDelay")
+-//      .setPredictionCol("predictionDTR")
+-//      .setMetricName("rmse")
+-//
+-//    val decisionTreeRegression_evaluator_r2 = new RegressionEvaluator()
+-//      .setLabelCol("ArrDelay")
+-//      .setPredictionCol("predictionDTR")
+-//      .setMetricName("r2")
+-//
+-//    val decissionTreeRegression_cv = new CrossValidator()
+-//      .setEstimator(decisionTreeRegression)
+-//      .setEvaluator(decisionTreeRegression_evaluator_rmse)
+-//      .setEstimatorParamMaps(new ParamGridBuilder().build())
+-//      .setNumFolds(3)
+-//      .setParallelism(3)
+-//
+-//
+-//    println("------------------------- Decision Tree Regression -------------------------")
+-//    val decissionTree_model = decissionTreeRegression_cv.fit(trainingData)
+-//    println("Model parameters:")
+-//    println(decissionTree_model.bestModel.extractParamMap())
+-//    val decisionTreeRegression_predictions = decissionTree_model.transform(testData)
+-//    println("ArrDelay VS predictionDTR:")
+-//    decisionTreeRegression_predictions.select("ArrDelay", "predictionDTR").show(10, false)
+-//    println(s"Root Mean Squared Error = ${decisionTreeRegression_evaluator_rmse.evaluate(decisionTreeRegression_predictions)}")
+-//    println(s"R-Squared = ${decisionTreeRegression_evaluator_r2.evaluate(decisionTreeRegression_predictions)}")
+-//
+-//
+-//    //-------------------RandomForestRegression-----------------------------------------
+-//    val randomForestRegressor = new RandomForestRegressor()
+-//      .setLabelCol("ArrDelay")
+-//      .setFeaturesCol("normFeatures")
+-//      .setPredictionCol("predictionRFR")
+-//
+-//    val randomForestRegressor_evaluator_rmse = new RegressionEvaluator()
+-//      .setLabelCol("ArrDelay")
+-//      .setPredictionCol("predictionRFR")
+-//      .setMetricName("rmse")
+-//
+-//    val randomForestRegressor_evaluator_r2 = new RegressionEvaluator()
+-//      .setLabelCol("ArrDelay")
+-//      .setPredictionCol("predictionRFR")
+-//      .setMetricName("r2")
+-//
+-//    val randomForestRegressor_cv = new CrossValidator()
+-//      .setEstimator(randomForestRegressor)
+-//      .setEvaluator(randomForestRegressor_evaluator_rmse)
+-//      .setEstimatorParamMaps(new ParamGridBuilder().build())
+-//      .setNumFolds(3)
+-//      .setParallelism(3)
+-//
+-//    println("------------------------Random Forest Regression FPR-------------------------")
+-//    val randomForestRegressor_model = randomForestRegressor_cv.fit(trainingData)
+-//    println("Model parameters:")
+-//    println(randomForestRegressor_model.bestModel.extractParamMap())
+-//    val randomForestRegressor_predictions = randomForestRegressor_model.transform(testData)
+-//    println("ArrDelay VS predictionRFR:")
+-//    randomForestRegressor_predictions.select("normFeatures", "ArrDelay", "predictionRFR").show(10, false)
+-//    println(s"Root Mean Squared Error = ${randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions)}")
+-//    println(s"R-Squared = ${randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)}")
+-//
+-//
+-//    println("------------------------Summary-------------------------")
+-//    val summaryDF = Seq(
+-//      ("LINEAR REGRESSION", linearRegression_evaluator_rmse.evaluate(linearRegression_predictions), linearRegression_evaluator_r2.evaluate(linearRegression_predictions)),
+-//      ("DECISION TREE REGRESSION", decisionTreeRegression_evaluator_rmse.evaluate(decisionTreeRegression_predictions), decisionTreeRegression_evaluator_r2.evaluate(decisionTreeRegression_predictions)),
+-//      ("RANDOM FOREST REGRESSION", randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions), randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)))
+-//      .toDF("Algorithm", "RMSE", "R2")
+-//
+-//    summaryDF.show(false)
++    //    println("--------------------------------- Separate data in train and test -----------------------------------------------")
++    //    val Array(trainingData, testData) = df.randomSplit(Array(0.7, 0.3), 10)
++    //    println("--------------------------------- Done -----------------------------------------------")
++    //    println()
++    //
++    //
++    //    println("--------------------------------- LinearRegression Declaration -----------------------------------------------")
++    //    val linearRegression = new LinearRegression()
++    //      .setFeaturesCol("normFeatures")
++    //      .setLabelCol("ArrDelay")
++    //      .setPredictionCol("predictionLR")
++    //      .setMaxIter(10)
++    //
++    //    val linearRegression_paramGrid = new ParamGridBuilder()
++    //      .addGrid(linearRegression.regParam, Array(0.1, 0.01))
++    //      .addGrid(linearRegression.elasticNetParam, Array(1, 0.8, 0.5))
++    //      .build()
++    //
++    //    val linearRegression_evaluator_rmse = new RegressionEvaluator()
++    //      .setLabelCol("ArrDelay")
++    //      .setPredictionCol("predictionLR")
++    //      .setMetricName("rmse")
++    //
++    //    val linearRegression_evaluator_r2 = new RegressionEvaluator()
++    //      .setLabelCol("ArrDelay")
++    //      .setPredictionCol("predictionLR")
++    //      .setMetricName("r2")
++    //
++    //    val linearRegression_cv = new CrossValidator()
++    //      .setEstimator(linearRegression)
++    //      .setEvaluator(linearRegression_evaluator_rmse)
++    //      .setEstimatorParamMaps(linearRegression_paramGrid)
++    //      .setNumFolds(3)
++    //      .setParallelism(3)
++    //
++    //    println("--------------------------------- Done -----------------------------------------------")
++    //    println()
++    //
++    //    println("--------------------------------- LinearRegression Training -----------------------------------------------")
++    //    val linearRegressionModel = linearRegression_cv.fit(trainingData)
++    //
++    //    println("Model parameters:")
++    //    println(linearRegressionModel.bestModel.extractParamMap())
++    //    val linearRegression_predictions = linearRegressionModel.transform(testData)
++    //    println("ArrDelay VS predictionLR:")
++    //    linearRegression_predictions.select("ArrDelay", "predictionLR").show(10, false)
++    //    println(s"Root Mean Squared Error = ${linearRegression_evaluator_rmse.evaluate(linearRegression_predictions)}")
++    //    println(s"R-Squared = ${linearRegression_evaluator_r2.evaluate(linearRegression_predictions)}")
++    //
++    //    //-------------------DecisionTreeRegression-----------------------------------------
++    //    val decisionTreeRegression = new DecisionTreeRegressor()
++    //      .setLabelCol("ArrDelay")
++    //      .setFeaturesCol("normFeatures")
++    //      .setPredictionCol("predictionDTR")
++    //
++    //    val decisionTreeRegression_evaluator_rmse = new RegressionEvaluator()
++    //      .setLabelCol("ArrDelay")
++    //      .setPredictionCol("predictionDTR")
++    //      .setMetricName("rmse")
++    //
++    //    val decisionTreeRegression_evaluator_r2 = new RegressionEvaluator()
++    //      .setLabelCol("ArrDelay")
++    //      .setPredictionCol("predictionDTR")
++    //      .setMetricName("r2")
++    //
++    //    val decissionTreeRegression_cv = new CrossValidator()
++    //      .setEstimator(decisionTreeRegression)
++    //      .setEvaluator(decisionTreeRegression_evaluator_rmse)
++    //      .setEstimatorParamMaps(new ParamGridBuilder().build())
++    //      .setNumFolds(3)
++    //      .setParallelism(3)
++    //
++    //
++    //    println("------------------------- Decision Tree Regression -------------------------")
++    //    val decissionTree_model = decissionTreeRegression_cv.fit(trainingData)
++    //    println("Model parameters:")
++    //    println(decissionTree_model.bestModel.extractParamMap())
++    //    val decisionTreeRegression_predictions = decissionTree_model.transform(testData)
++    //    println("ArrDelay VS predictionDTR:")
++    //    decisionTreeRegression_predictions.select("ArrDelay", "predictionDTR").show(10, false)
++    //    println(s"Root Mean Squared Error = ${decisionTreeRegression_evaluator_rmse.evaluate(decisionTreeRegression_predictions)}")
++    //    println(s"R-Squared = ${decisionTreeRegression_evaluator_r2.evaluate(decisionTreeRegression_predictions)}")
++    //
++    //
++    //    //-------------------RandomForestRegression-----------------------------------------
++    //    val randomForestRegressor = new RandomForestRegressor()
++    //      .setLabelCol("ArrDelay")
++    //      .setFeaturesCol("normFeatures")
++    //      .setPredictionCol("predictionRFR")
++    //
++    //    val randomForestRegressor_evaluator_rmse = new RegressionEvaluator()
++    //      .setLabelCol("ArrDelay")
++    //      .setPredictionCol("predictionRFR")
++    //      .setMetricName("rmse")
++    //
++    //    val randomForestRegressor_evaluator_r2 = new RegressionEvaluator()
++    //      .setLabelCol("ArrDelay")
++    //      .setPredictionCol("predictionRFR")
++    //      .setMetricName("r2")
++    //
++    //    val randomForestRegressor_cv = new CrossValidator()
++    //      .setEstimator(randomForestRegressor)
++    //      .setEvaluator(randomForestRegressor_evaluator_rmse)
++    //      .setEstimatorParamMaps(new ParamGridBuilder().build())
++    //      .setNumFolds(3)
++    //      .setParallelism(3)
++    //
++    //    println("------------------------Random Forest Regression FPR-------------------------")
++    //    val randomForestRegressor_model = randomForestRegressor_cv.fit(trainingData)
++    //    println("Model parameters:")
++    //    println(randomForestRegressor_model.bestModel.extractParamMap())
++    //    val randomForestRegressor_predictions = randomForestRegressor_model.transform(testData)
++    //    println("ArrDelay VS predictionRFR:")
++    //    randomForestRegressor_predictions.select("normFeatures", "ArrDelay", "predictionRFR").show(10, false)
++    //    println(s"Root Mean Squared Error = ${randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions)}")
++    //    println(s"R-Squared = ${randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)}")
++    //
++    //
++    //    println("------------------------Summary-------------------------")
++    //    val summaryDF = Seq(
++    //      ("LINEAR REGRESSION", linearRegression_evaluator_rmse.evaluate(linearRegression_predictions), linearRegression_evaluator_r2.evaluate(linearRegression_predictions)),
++    //      ("DECISION TREE REGRESSION", decisionTreeRegression_evaluator_rmse.evaluate(decisionTreeRegression_predictions), decisionTreeRegression_evaluator_r2.evaluate(decisionTreeRegression_predictions)),
++    //      ("RANDOM FOREST REGRESSION", randomForestRegressor_evaluator_rmse.evaluate(randomForestRegressor_predictions), randomForestRegressor_evaluator_r2.evaluate(randomForestRegressor_predictions)))
++    //      .toDF("Algorithm", "RMSE", "R2")
++    //
++    //    summaryDF.show(false)
+ 
+   }
+ }
+Index: .bsp/sbt.json
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>{\"name\":\"sbt\",\"version\":\"1.8.0\",\"bspVersion\":\"2.1.0-M1\",\"languages\":[\"scala\"],\"argv\":[\"C:\\\\Users\\\\guill\\\\.jdks\\\\corretto-1.8.0_352\\\\jre/bin/java\",\"-Xms100m\",\"-Xmx100m\",\"-classpath\",\"C:/Users/guill/AppData/Roaming/JetBrains/IdeaIC2022.3/plugins/Scala/launcher/sbt-launch.jar\",\"xsbt.boot.Boot\",\"-bsp\",\"--sbt-launch-jar=C:/Users/guill/AppData/Roaming/JetBrains/IdeaIC2022.3/plugins/Scala/launcher/sbt-launch.jar\"]}
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.bsp/sbt.json b/.bsp/sbt.json
+--- a/.bsp/sbt.json	
++++ b/.bsp/sbt.json	
+@@ -1,1 +1,1 @@
+-{"name":"sbt","version":"1.8.0","bspVersion":"2.1.0-M1","languages":["scala"],"argv":["C:\\Users\\guill\\.jdks\\corretto-1.8.0_352\\jre/bin/java","-Xms100m","-Xmx100m","-classpath","C:/Users/guill/AppData/Roaming/JetBrains/IdeaIC2022.3/plugins/Scala/launcher/sbt-launch.jar","xsbt.boot.Boot","-bsp","--sbt-launch-jar=C:/Users/guill/AppData/Roaming/JetBrains/IdeaIC2022.3/plugins/Scala/launcher/sbt-launch.jar"]}
+\ No newline at end of file
++{"name":"sbt","version":"1.8.0","bspVersion":"2.1.0-M1","languages":["scala"],"argv":["C:\\Users\\javie\\.jdks\\corretto-1.8.0_352\\jre/bin/java","-Xms100m","-Xmx100m","-classpath","C:/Users/javie/AppData/Roaming/JetBrains/IntelliJIdea2022.3/plugins/Scala/launcher/sbt-launch.jar","xsbt.boot.Boot","-bsp","--sbt-launch-jar=C:/Users/javie/AppData/Roaming/JetBrains/IntelliJIdea2022.3/plugins/Scala/launcher/sbt-launch.jar"]}
+\ No newline at end of file
+Index: .idea/workspace.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<project version=\"4\">\r\n  <component name=\"AutoImportSettings\">\r\n    <option name=\"autoReloadType\" value=\"SELECTIVE\" />\r\n  </component>\r\n  <component name=\"ChangeListManager\">\r\n    <list default=\"true\" id=\"e9a8baf7-508b-4bc0-a8f9-2d73acf37419\" name=\"Changes\" comment=\"\">\r\n      <change afterPath=\"$PROJECT_DIR$/.bsp/sbt.json\" afterDir=\"false\" />\r\n      <change afterPath=\"$PROJECT_DIR$/.idea/codeStyles/Project.xml\" afterDir=\"false\" />\r\n      <change afterPath=\"$PROJECT_DIR$/.idea/codeStyles/codeStyleConfig.xml\" afterDir=\"false\" />\r\n      <change afterPath=\"$PROJECT_DIR$/.idea/libraries/sbt__org_scala_lang_scala_library_2_13_10_jar.xml\" afterDir=\"false\" />\r\n      <change afterPath=\"$PROJECT_DIR$/.idea/misc.xml\" afterDir=\"false\" />\r\n      <change afterPath=\"$PROJECT_DIR$/.idea/modules.xml\" afterDir=\"false\" />\r\n      <change afterPath=\"$PROJECT_DIR$/.idea/modules/BigData-Spark-Assignment-build.iml\" afterDir=\"false\" />\r\n      <change afterPath=\"$PROJECT_DIR$/.idea/modules/BigData-Spark-Assignment.iml\" afterDir=\"false\" />\r\n      <change afterPath=\"$PROJECT_DIR$/.idea/sbt.xml\" afterDir=\"false\" />\r\n      <change afterPath=\"$PROJECT_DIR$/.idea/scala_compiler.xml\" afterDir=\"false\" />\r\n      <change afterPath=\"$PROJECT_DIR$/.idea/vcs.xml\" afterDir=\"false\" />\r\n      <change afterPath=\"$PROJECT_DIR$/.idea/workspace.xml\" afterDir=\"false\" />\r\n      <change afterPath=\"$PROJECT_DIR$/build.sbt\" afterDir=\"false\" />\r\n      <change afterPath=\"$PROJECT_DIR$/project/build.properties\" afterDir=\"false\" />\r\n      <change afterPath=\"$PROJECT_DIR$/src/main/scala/Main.scala\" afterDir=\"false\" />\r\n    </list>\r\n    <option name=\"SHOW_DIALOG\" value=\"false\" />\r\n    <option name=\"HIGHLIGHT_CONFLICTS\" value=\"true\" />\r\n    <option name=\"HIGHLIGHT_NON_ACTIVE_CHANGELIST\" value=\"false\" />\r\n    <option name=\"LAST_RESOLUTION\" value=\"IGNORE\" />\r\n  </component>\r\n  <component name=\"CodeStyleSettingsInfer\">\r\n    <option name=\"done\" value=\"true\" />\r\n  </component>\r\n  <component name=\"ExternalProjectsData\">\r\n    <projectState path=\"$PROJECT_DIR$\">\r\n      <ProjectState />\r\n    </projectState>\r\n  </component>\r\n  <component name=\"Git.Settings\">\r\n    <option name=\"RECENT_GIT_ROOT_PATH\" value=\"$PROJECT_DIR$\" />\r\n  </component>\r\n  <component name=\"MarkdownSettingsMigration\">\r\n    <option name=\"stateVersion\" value=\"1\" />\r\n  </component>\r\n  <component name=\"ProjectCodeStyleSettingsMigration\">\r\n    <option name=\"version\" value=\"2\" />\r\n  </component>\r\n  <component name=\"ProjectId\" id=\"2IXfhi4tGCZ7OnvZXSPjR6PrFY7\" />\r\n  <component name=\"ProjectLevelVcsManager\" settingsEditedManually=\"true\" />\r\n  <component name=\"ProjectViewState\">\r\n    <option name=\"hideEmptyMiddlePackages\" value=\"true\" />\r\n    <option name=\"showLibraryContents\" value=\"true\" />\r\n  </component>\r\n  <component name=\"PropertiesComponent\"><![CDATA[{\r\n  \"keyToString\": {\r\n    \"RunOnceActivity.OpenProjectViewOnStart\": \"true\",\r\n    \"RunOnceActivity.ShowReadmeOnStart\": \"true\",\r\n    \"SHARE_PROJECT_CONFIGURATION_FILES\": \"true\"\r\n  }\r\n}]]></component>\r\n  <component name=\"SpellCheckerSettings\" RuntimeDictionaries=\"0\" Folders=\"0\" CustomDictionaries=\"0\" DefaultDictionary=\"application-level\" UseSingleDictionary=\"true\" transferred=\"true\" />\r\n  <component name=\"TaskManager\">\r\n    <task active=\"true\" id=\"Default\" summary=\"Default task\">\r\n      <changelist id=\"e9a8baf7-508b-4bc0-a8f9-2d73acf37419\" name=\"Changes\" comment=\"\" />\r\n      <created>1670332970379</created>\r\n      <option name=\"number\" value=\"Default\" />\r\n      <option name=\"presentableId\" value=\"Default\" />\r\n      <updated>1670332970379</updated>\r\n    </task>\r\n    <servers />\r\n  </component>\r\n</project>
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/workspace.xml b/.idea/workspace.xml
+--- a/.idea/workspace.xml	
++++ b/.idea/workspace.xml	
+@@ -5,21 +5,12 @@
+   </component>
+   <component name="ChangeListManager">
+     <list default="true" id="e9a8baf7-508b-4bc0-a8f9-2d73acf37419" name="Changes" comment="">
+-      <change afterPath="$PROJECT_DIR$/.bsp/sbt.json" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/.idea/codeStyles/Project.xml" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/.idea/codeStyles/codeStyleConfig.xml" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/.idea/libraries/sbt__org_scala_lang_scala_library_2_13_10_jar.xml" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/.idea/modules/BigData-Spark-Assignment-build.iml" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/.idea/modules/BigData-Spark-Assignment.iml" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/.idea/sbt.xml" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/.idea/scala_compiler.xml" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/build.sbt" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/project/build.properties" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/src/main/scala/Main.scala" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/.bsp/sbt.json" beforeDir="false" afterPath="$PROJECT_DIR$/.bsp/sbt.json" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/.idea/modules/BigData-Spark-Assignment-build.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules/BigData-Spark-Assignment-build.iml" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/.idea/modules/BigData-Spark-Assignment.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules/BigData-Spark-Assignment.iml" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/src/main/scala/Main.scala" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/scala/Main.scala" afterDir="false" />
+     </list>
+     <option name="SHOW_DIALOG" value="false" />
+     <option name="HIGHLIGHT_CONFLICTS" value="true" />
+@@ -33,6 +24,23 @@
+     <projectState path="$PROJECT_DIR$">
+       <ProjectState />
+     </projectState>
++  </component>
++  <component name="ExternalProjectsManager">
++    <system id="SBT">
++      <state>
++        <projects_view>
++          <tree_state>
++            <expand>
++              <path>
++                <item name="" type="6a2764b6:ExternalProjectsStructure$RootNode" />
++                <item name="BigData-Spark-Assignment" type="f1a62948:ProjectNode" />
++              </path>
++            </expand>
++            <select />
++          </tree_state>
++        </projects_view>
++      </state>
++    </system>
+   </component>
+   <component name="Git.Settings">
+     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+@@ -49,13 +57,28 @@
+     <option name="hideEmptyMiddlePackages" value="true" />
+     <option name="showLibraryContents" value="true" />
+   </component>
+-  <component name="PropertiesComponent"><![CDATA[{
+-  "keyToString": {
+-    "RunOnceActivity.OpenProjectViewOnStart": "true",
+-    "RunOnceActivity.ShowReadmeOnStart": "true",
+-    "SHARE_PROJECT_CONFIGURATION_FILES": "true"
++  <component name="PropertiesComponent">{
++  &quot;keyToString&quot;: {
++    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
++    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
++    &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
++    &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
++    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
++    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
++    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
++    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
++    &quot;project.structure.last.edited&quot;: &quot;Project&quot;,
++    &quot;project.structure.proportion&quot;: &quot;0.15&quot;,
++    &quot;project.structure.side.proportion&quot;: &quot;0.2&quot;,
++    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.lookFeel&quot;,
++    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+   }
+-}]]></component>
++}</component>
++  <component name="RecentsManager">
++    <key name="MoveFile.RECENT_KEYS">
++      <recent name="C:\Users\javie\IdeaProjects\BigData-Spark-Assignment\src\main\resources" />
++    </key>
++  </component>
+   <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+   <component name="TaskManager">
+     <task active="true" id="Default" summary="Default task">
+@@ -64,7 +87,37 @@
+       <option name="number" value="Default" />
+       <option name="presentableId" value="Default" />
+       <updated>1670332970379</updated>
++      <workItem from="1670844333897" duration="286000" />
++      <workItem from="1670844655803" duration="605000" />
++      <workItem from="1670845285633" duration="1426000" />
++      <workItem from="1670852816593" duration="89000" />
+     </task>
+     <servers />
+   </component>
++  <component name="TypeScriptGeneratedFilesManager">
++    <option name="version" value="3" />
++  </component>
++  <component name="Vcs.Log.Tabs.Properties">
++    <option name="TAB_STATES">
++      <map>
++        <entry key="MAIN">
++          <value>
++            <State>
++              <option name="FILTERS">
++                <map>
++                  <entry key="branch">
++                    <value>
++                      <list>
++                        <option value="origin/javir0c" />
++                      </list>
++                    </value>
++                  </entry>
++                </map>
++              </option>
++            </State>
++          </value>
++        </entry>
++      </map>
++    </option>
++  </component>
+ </project>
+\ No newline at end of file
+Index: .idea/modules/BigData-Spark-Assignment-build.iml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<module external.linked.project.id=\"BigData-Spark-Assignment-build\" external.linked.project.path=\"$MODULE_DIR$/../../project\" external.root.project.path=\"$MODULE_DIR$/../..\" external.system.id=\"SBT\" type=\"SBT_MODULE\" version=\"4\">\r\n  <component name=\"NewModuleRootManager\">\r\n    <output url=\"file://$MODULE_DIR$/../../project/target/idea-classes\" />\r\n    <output-test url=\"file://$MODULE_DIR$/../../project/target/idea-test-classes\" />\r\n    <exclude-output />\r\n    <content url=\"file://$MODULE_DIR$/../../project\">\r\n      <sourceFolder url=\"file://$MODULE_DIR$/../../project\" isTestSource=\"false\" />\r\n      <excludeFolder url=\"file://$MODULE_DIR$/../../project/project/target\" />\r\n      <excludeFolder url=\"file://$MODULE_DIR$/../../project/target\" />\r\n    </content>\r\n    <orderEntry type=\"inheritedJdk\" />\r\n    <orderEntry type=\"sourceFolder\" forTests=\"false\" />\r\n    <orderEntry type=\"module-library\" scope=\"PROVIDED\">\r\n      <library name=\"sbt: sbt-1.8.0\">\r\n        <CLASSES>\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/lib/scala-compiler.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/lib/scala-library.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/lib/scala-reflect.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/lib/scala-xml_2.12-2.1.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/actions_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/caffeine-2.8.5.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/checker-qual-3.4.1.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/collections_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/command_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/compiler-bridge_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/compiler-interface-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/completion_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/config-1.4.2.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/core-macros_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/disruptor-3.4.2.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/error_prone_annotations-2.4.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/file-tree-views-2.1.9.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/gigahorse-apache-http_2.12-0.7.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/gigahorse-core_2.12-0.7.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/io_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/ipcsocket-1.5.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/ivy-2.3.0-sbt-a8f9eb5bf09d0539ea3658a2c2d4e09755b5133e.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/jansi-2.1.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/jline-2.14.7-sbt-a1b0ffbb8f64bb820f4f84a0c07a0c0964507493.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/jline-builtins-3.19.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/jline-reader-3.19.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/jline-style-3.19.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/jline-terminal-3.19.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/jline-terminal-jansi-3.19.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/jline-terminal-jna-3.19.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/jna-5.12.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/jna-platform-5.12.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/jsch-0.1.54.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/launcher-interface-1.4.1.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/librarymanagement-core_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/librarymanagement-ivy_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/lm-coursier-shaded_2.12-2.0.13.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/log4j-api-2.17.1.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/log4j-core-2.17.1.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/log4j-slf4j-impl-2.17.1.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/logic_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/main-settings_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/main_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/protocol_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/reactive-streams-1.0.3.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/run_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/sbinary_2.12-0.5.1.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/sbt-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/scala-collection-compat_2.12-2.8.1.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/scala-compiler-2.12.17.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/scala-library-2.12.17.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/scala-parser-combinators_2.12-1.1.2.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/scala-reflect-2.12.17.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/scala-xml_2.12-2.1.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/scripted-plugin_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/shaded-apache-httpasyncclient-0.7.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/shaded-jawn-parser_2.12-0.9.1.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/shaded-scalajson_2.12-1.0.0-M4.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/sjson-new-core_2.12-0.9.1.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/sjson-new-murmurhash_2.12-0.9.1.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/sjson-new-scalajson_2.12-0.9.1.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/slf4j-api-2.0.3.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/ssl-config-core_2.12-0.6.1.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/task-system_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/tasks_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/template-resolver-0.1.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/test-agent-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/test-interface-1.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/testing_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/util-cache_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/util-control_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/util-interface-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/util-logging_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/util-position_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/util-relation_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/util-tracking_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/zero-allocation-hashing-0.10.1.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/zinc-apiinfo_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/zinc-classfile_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/zinc-classpath_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/zinc-compile-core_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/zinc-compile_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/zinc-core_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/zinc-lm-integration_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/zinc-persist-core-assembly-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/zinc-persist_2.12-1.8.0.jar!/\" />\r\n          <root url=\"jar://$USER_HOME$/.sbt/boot/scala-2.12.17/org.scala-sbt/sbt/1.8.0/zinc_2.12-1.8.0.jar!/\" />\r\n        </CLASSES>\r\n        <JAVADOC />\r\n        <SOURCES />\r\n      </library>\r\n    </orderEntry>\r\n  </component>\r\n  <component name=\"SbtModule\">\r\n    <option name=\"buildForURI\" value=\"file:/$MODULE_DIR$/../../\" />\r\n    <option name=\"imports\" value=\"SUB:DOLLAR167f05667fc5abe737c3.`root`, _root_.sbt.Keys._, _root_.sbt.ScriptedPlugin.autoImport._, _root_.sbt.plugins.JUnitXmlReportPlugin.autoImport._, _root_.sbt.plugins.MiniDependencyTreePlugin.autoImport._, _root_.sbt._, _root_.sbt.nio.Keys._, _root_.sbt.plugins.IvyPlugin, _root_.sbt.plugins.JvmPlugin, _root_.sbt.plugins.CorePlugin, _root_.sbt.ScriptedPlugin, _root_.sbt.plugins.SbtPlugin, _root_.sbt.plugins.SemanticdbPlugin, _root_.sbt.plugins.JUnitXmlReportPlugin, _root_.sbt.plugins.Giter8TemplatePlugin, _root_.sbt.plugins.MiniDependencyTreePlugin, _root_.scala.xml.{TopScope=&gt;SUB:DOLLARscope}\" />\r\n    <option name=\"resolvers\" value=\"C:\\Users\\guill\\.ivy2\\cache|ivy|true|Local cache, https://repo1.maven.org/maven2/|maven|public\" />\r\n  </component>\r\n</module>
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/modules/BigData-Spark-Assignment-build.iml b/.idea/modules/BigData-Spark-Assignment-build.iml
+--- a/.idea/modules/BigData-Spark-Assignment-build.iml	
++++ b/.idea/modules/BigData-Spark-Assignment-build.iml	
+@@ -109,7 +109,7 @@
+   </component>
+   <component name="SbtModule">
+     <option name="buildForURI" value="file:/$MODULE_DIR$/../../" />
+-    <option name="imports" value="SUB:DOLLAR167f05667fc5abe737c3.`root`, _root_.sbt.Keys._, _root_.sbt.ScriptedPlugin.autoImport._, _root_.sbt.plugins.JUnitXmlReportPlugin.autoImport._, _root_.sbt.plugins.MiniDependencyTreePlugin.autoImport._, _root_.sbt._, _root_.sbt.nio.Keys._, _root_.sbt.plugins.IvyPlugin, _root_.sbt.plugins.JvmPlugin, _root_.sbt.plugins.CorePlugin, _root_.sbt.ScriptedPlugin, _root_.sbt.plugins.SbtPlugin, _root_.sbt.plugins.SemanticdbPlugin, _root_.sbt.plugins.JUnitXmlReportPlugin, _root_.sbt.plugins.Giter8TemplatePlugin, _root_.sbt.plugins.MiniDependencyTreePlugin, _root_.scala.xml.{TopScope=&gt;SUB:DOLLARscope}" />
+-    <option name="resolvers" value="C:\Users\guill\.ivy2\cache|ivy|true|Local cache, https://repo1.maven.org/maven2/|maven|public" />
++    <option name="imports" value="SUB:DOLLAR2b110cd3e766c893c581.`root`, _root_.sbt.Keys._, _root_.sbt.ScriptedPlugin.autoImport._, _root_.sbt.plugins.JUnitXmlReportPlugin.autoImport._, _root_.sbt.plugins.MiniDependencyTreePlugin.autoImport._, _root_.sbt._, _root_.sbt.nio.Keys._, _root_.sbt.plugins.IvyPlugin, _root_.sbt.plugins.JvmPlugin, _root_.sbt.plugins.CorePlugin, _root_.sbt.ScriptedPlugin, _root_.sbt.plugins.SbtPlugin, _root_.sbt.plugins.SemanticdbPlugin, _root_.sbt.plugins.JUnitXmlReportPlugin, _root_.sbt.plugins.Giter8TemplatePlugin, _root_.sbt.plugins.MiniDependencyTreePlugin, _root_.scala.xml.{TopScope=&gt;SUB:DOLLARscope}" />
++    <option name="resolvers" value="C:\Users\javie\.ivy2\cache|ivy|true|Local cache, https://repo1.maven.org/maven2/|maven|public" />
+   </component>
+ </module>
+\ No newline at end of file

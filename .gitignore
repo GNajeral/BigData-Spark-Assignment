@@ -95,3 +95,6 @@
 /project/target/streams/_global/dependencyPositions/_global/streams/update_cache_2.12/output_dsp
 /target/streams/_global/dependencyPositions/_global/streams/update_cache_2.13/output_dsp
 /project/target/streams/compile/_global/_global/compileOutputs/previous
+/target/scala-2.13/classes/
+/target/scala-2.13/classes/2008.csv
+/target/scala-2.13/classes/plane-data.csv
