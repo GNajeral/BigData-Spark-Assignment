@@ -562,7 +562,7 @@ object Main {
 /*
     println("----------------------------------------------------------------------------- DECISION TREE REGRESSOR ----------------------------------------------------------------------------")
 
-    // We create a linear regression learning algorithm
+    // We create a decision tree regressor algorithm
     val decisionTree = new DecisionTreeRegressor()
       .setLabelCol("ArrDelay")
       .setFeaturesCol("selectedFeatures")
