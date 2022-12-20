@@ -128,21 +128,6 @@ object Main2 {
     println()
 
 
-    // We delete the "CRSDepTime" column given that we already have enough information with the "DepTime" and "DepDelay" columns
-    println("--------------------------------- We delete the \"CRSDepTime\" column -----------------------------------------------")
-    df = df.drop("CRSDepTime")
-    println("--------------------------------- Done -----------------------------------------------")
-    println()
-
-
-    // We delete the "CRSElapsedTime" column since this variable seems to give the same information as the "Distance" column (higher distance, higher estimated time and vice versa)
-    println("--------------------------------- We delete the \"CRSElapsedTime\" column -----------------------------------------------")
-    df = df.drop("CRSElapsedTime")
-    println("--------------------------------- Done -----------------------------------------------")
-    println()
-
-
-
     // We check for NA values in the each column of the dataset and set them to null for the imputers to do their work
     println("--------------------------------- Checking for NA values in the dataset to set them to null -----------------------------------------------")
     for (i <- 0 until df.columns.drop(df.columns.indexOf("ArrDelay")).length) {
@@ -171,16 +156,16 @@ object Main2 {
       }
     }
 
-
     df = df.drop(columnsToDrop2:_*)
     var numCols = numColsMean ++ numColsMf
-    df.show()
-
-    // Replace NaN values with NULL
-    //df = df.na.fill(null, df.columns)
 
     println("--------------------------------- Done -----------------------------------------------")
     println()
+    df.show()
+
+
+    // Replace NaN values with NULL
+    //df = df.na.fill(null, df.columns)
 
     // We cast to Integer every column in order to be able to use the imputer
     println("--------------------------------- We cast to Integer every column in order to be able to use the imputer -----------------------------------------------")
