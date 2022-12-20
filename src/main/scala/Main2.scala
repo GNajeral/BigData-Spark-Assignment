@@ -149,12 +149,15 @@ object Main2 {
       val column = df.columns(i)
       df = df.withColumn(column, replaceNAWithNull(col(column)))
     }
+    println("--------------------------------- Done -----------------------------------------------")
+    println()
 
 
+    println("--------------------------------- We delete the columns that only have NULL values -----------------------------------------------")
     // Numerical columns for "mean" imputer and "most frequent" imputer
     var numColsMean = Array("DepTime", "CRSArrTime", "DepDelay", "Distance", "TaxiOut")
-    var numColsMf = Array("Year", "FlightNum", "Month", "DayofMonth", "DayOfWeek")
-    var catColsDf = Array("TailNum", "Dest", "Origin")
+    var numColsMf = Array("Year", "Month", "DayofMonth", "DayOfWeek", "FlightNum")
+    var catColsDf = Array("UniqueCarrier", "TailNum", "Origin", "Dest")
     var columnsToDrop2 = df.columns
     for (i <- 0 until df.columns.length) {
       val column = df.columns(i)
@@ -183,13 +186,48 @@ object Main2 {
     println("--------------------------------- We cast to Integer every column in order to be able to use the imputer -----------------------------------------------")
     for (i <- 0 until df.columns.length){
       val colName = df.columns(i)
-      if (numColsMean.contains(colName) || numColsMf.contains(colName) || colName == "ArrDelay")
+      if (numCols.contains(colName) || colName == "ArrDelay")
         df = df.withColumn(colName,col(colName).cast(IntegerType))
     }
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
     df.show()
+
+
+    // We look at the correlation between the explanatory variables. If any of them are high correlated that indicates
+    // that one of them could be removed, as they produce a similar effect on the target variable
+    println("--------------------------------- Correlations between explanatory variables and target variable -----------------------------------------------")
+    for (i <- 0 until df.columns.length) {
+      val column = df.columns(i)
+      if (numCols.contains(column)) {
+        println("Correlation between ArrDelay and " + column + ":")
+        println(df.stat.corr("ArrDelay", column, "pearson"))
+      }
+    }
+    println("--------------------------------- Done -----------------------------------------------")
+    println()
+
+
+    println("--------------------------------- Correlations between explanatory variables -----------------------------------------------")
+    for (i <- 0 until numCols.length) {
+      val column = numCols(i)
+      for(j <- i+1 until numCols.length) {
+        val column2 = numCols(j)
+        println("Correlation between " +  column + " and " + column2 + ":")
+        println(df.stat.corr(column, column2, "pearson"))
+      }
+    }
+    println("--------------------------------- Done -----------------------------------------------")
+    println()
+
+
+    // We delete the "CRSDepTime" and "CRSDepTime" columns as the correlation tell us that they produce a similar effect on the target variable
+    println("--------------------------------- We delete the \"CRSDepTime\" and \"CRSElapsedTime\" columns -----------------------------------------------")
+    df = df.drop("CRSDepTime", "CRSElapsedTime")
+    println("--------------------------------- Done -----------------------------------------------")
+    println()
+
 
     // We apply the "most frequent" imputer for the "Month", "DayOfMonth" and "DayOfWeek" columns
     println("--------------------------------- We apply the \"most frequent\" imputer for the \"Year\", \"Month\", \"DayofMonth\" and \"DayOfWeek\" columns -----------------------------------------------")
