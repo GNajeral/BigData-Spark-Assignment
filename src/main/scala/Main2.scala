@@ -140,9 +140,14 @@ object Main2 {
 
     println("--------------------------------- We delete the columns that only have NULL values -----------------------------------------------")
     // Numerical columns for "mean" imputer and "most frequent" imputer
-    var numColsMean = Array("DepTime", "CRSArrTime", "DepDelay", "Distance", "TaxiOut")
+    /*
+    var numColsMean = Array("DepTime", "CRSDepTime", "CRSElapsedTime", "CRSArrTime", "DepDelay", "Distance", "TaxiOut")
     var numColsMf = Array("Year", "Month", "DayofMonth", "DayOfWeek", "FlightNum")
     var catColsDf = Array("UniqueCarrier", "TailNum", "Origin", "Dest")
+    */
+    var numColsMean = Array("CRSArrTime", "DepDelay", "TaxiOut")
+    var numColsMf = Array()
+    var catColsDf = Array()
     var columnsToDrop2 = df.columns
     for (i <- 0 until df.columns.length) {
       val column = df.columns(i)
@@ -151,13 +156,14 @@ object Main2 {
       }
       else{
         if(numColsMean.contains(column)){ numColsMean = numColsMean.filter(_ != column) }
-        else if(numColsMf.contains(column)) { numColsMf = numColsMf.filter(_ != column) }
-        else if(catColsDf.contains(column)) { catColsDf = catColsDf.filter(_ != column) }
+        //else if(numColsMf.contains(column)) { numColsMf = numColsMf.filter(_ != column) }
+        //else if(catColsDf.contains(column)) { catColsDf = catColsDf.filter(_ != column) }
       }
     }
 
     df = df.drop(columnsToDrop2:_*)
-    var numCols = numColsMean ++ numColsMf
+    //var numCols = numColsMean ++ numColsMf
+    var numCols = numColsMean
 
     println("--------------------------------- Done -----------------------------------------------")
     println()
@@ -206,23 +212,25 @@ object Main2 {
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
-
+    /*
     // We delete the "CRSDepTime" and "CRSDepTime" columns as the correlation tell us that they produce a similar effect on the target variable
     println("--------------------------------- We delete the \"CRSDepTime\" and \"CRSElapsedTime\" columns -----------------------------------------------")
     df = df.drop("CRSDepTime", "CRSElapsedTime")
+    numCols = numCols.filter(_ != "CRSDepTime").filter(_ != "CRSElapsedTime")
     println("--------------------------------- Done -----------------------------------------------")
     println()
-
+     */
 
     // We apply the "most frequent" imputer for the "Month", "DayOfMonth" and "DayOfWeek" columns
     println("--------------------------------- We apply the \"most frequent\" imputer for the \"Year\", \"Month\", \"DayofMonth\" and \"DayOfWeek\" columns -----------------------------------------------")
     val imputer = new Imputer()
-      .setInputCols(numColsMf)
-      .setOutputCols(numColsMf)
-      .setStrategy("mode")
+      //.setInputCols(numColsMf)
+      //.setOutputCols(numColsMf)
+      //.setStrategy("mode")
     df = imputer.fit(df).transform(df)
     println("--------------------------------- Done -----------------------------------------------")
     println()
+
 
 
     // We apply the "mean" imputer for the rest of the numerical columns
@@ -245,9 +253,10 @@ object Main2 {
 
     // We change the value of "DepTime" and "CRSArrTime" to strings containing values such as morning, night... in order to apply one hot encoder more efficiently
     println("--------------------------------- We change the value of \"DepTime\" and \"CRSArrTime\" -----------------------------------------------")
-    df = df.withColumn("DepTime", replaceTimeWithDayPart(col("DepTime")))
+    //df = df.withColumn("DepTime", replaceTimeWithDayPart(col("DepTime")))
     df = df.withColumn("CRSArrTime", replaceTimeWithDayPart(col("CRSArrTime")))
-    numCols = numCols.filter(_ != "DepTime").filter(_ != "CRSArrTime")
+    //numCols = numCols.filter(_ != "DepTime").filter(_ != "CRSArrTime")
+    numCols = numCols.filter(_ != "CRSArrTime")
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
@@ -325,7 +334,7 @@ object Main2 {
     df = df.drop(indexedColumns:_*)
     df = df.drop(columnsToIndex:_*)
     df = df.drop(catCols:_*)
-    df = df.drop(Array("FlightNum", "DepDelay", "Distance", "TaxiOut", "DepTime", "CSRArrTime", "Month", "DayofMonth", "features"):_*)
+    //df = df.drop(Array("FlightNum", "DepDelay", "Distance", "TaxiOut", "DepTime", "CSRArrTime", "Month", "DayofMonth", "features"):_*)
     df.show()
 
 
