@@ -51,9 +51,9 @@ object Main2 {
     spark.sparkContext.setLogLevel("ERROR")
 
     println()
-    println("------------------------------------------------------------------------------------------------------------------------------------------------------------------------")
-    println("---------------------------------------------------------------------- DATA LOADING ------------------------------------------------------------------------------------")
-    println("------------------------------------------------------------------------------------------------------------------------------------------------------------------------")
+    println("----------------------------------------------------------------------------------------------------------------------------------")
+    println("--------------------------------------------------- DATA LOADING -----------------------------------------------------------------")
+    println("----------------------------------------------------------------------------------------------------------------------------------")
     println()
 
     // We read the input data
@@ -62,32 +62,30 @@ object Main2 {
     var dfPlane = spark.read.option("header", value = "true").csv("src/main/resources/plane-data.csv")
 
 
-    println("------------------------------------------------------------------------------------------------------------------------------------------------------------------------")
-    println("---------------------------------------------------------------- DATA PREPROCESSING & FEATURE SELECTION ----------------------------------------------------------------")
-    println("------------------------------------------------------------------------------------------------------------------------------------------------------------------------")
+    println("----------------------------------------------------------------------------------------------------------------------------------")
+    println("----------------------------------------- DATA PREPROCESSING & FEATURE SELECTION -------------------------------------------------")
+    println("----------------------------------------------------------------------------------------------------------------------------------")
     println()
 
     // We delete the forbidden columns
     println("--------------------------------- We delete the forbidden columns ----------------------------------")
     val columnsToDrop = Array("ArrTime", "ActualElapsedTime", "AirTime", "TaxiIn", "Diverted", "CarrierDelay", "WeatherDelay", "NASDelay", "SecurityDelay", "LateAircraftDelay")
     df = df.drop(columnsToDrop:_*)
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
 
     // We delete the null values of the target variable as we are not going to use that values
-    println("--------------------------------- We delete the null values of \"ArrDelay\" -----------------------------------------------")
+    println("----------------------------- We delete the null values of \"ArrDelay\" ------------------------------")
     df = df.filter("ArrDelay is NOT NULL AND ArrDelay NOT LIKE 'NA'")
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
-    println("--------------------------------- Target variable -----------------------------------------------")
-    println("'ArrDelay'")
-    println("--------------------------------- Done -----------------------------------------------")
+    println("Target variable: ArrDelay")
     println()
 
 
     // We filter the columns that can not contain negative values
-    println("--------------------------------- We filter the columns that can not contain negative values -----------------------------------------------")
+    println("-------------------- We filter the columns that can not contain negative values --------------------")
     df = df.filter("Month > 0 OR Month IS NULL OR Month LIKE 'NA'")
     df = df.filter("DayofMonth > 0 OR DayofMonth IS NULL OR DayofMonth LIKE 'NA'")
     df = df.filter("DayOfWeek > 0 OR DayOfWeek IS NULL OR DayOfWeek LIKE 'NA'")
@@ -95,34 +93,34 @@ object Main2 {
     df = df.filter("CRSArrTime > 0 OR CRSArrTime IS NULL OR CRSArrTime LIKE 'NA'")
     df = df.filter("Distance > 0 OR Distance IS NULL OR Distance LIKE 'NA'")
     df = df.filter("TaxiOut > 0 OR TaxiOut IS NULL OR TaxiOut LIKE 'NA'")
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
 
     // We delete all the rows that contain cancelled flights, since this will not be useful for our prediction goal
-    println("--------------------------------- We delete all the rows that contain cancelled flights -----------------------------------------------")
+    println("----------------------- We delete all the rows that contain cancelled flights ----------------------")
     df = df.filter("Cancelled == 0")
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
     // Therefore, we eliminate the "CancellationCode" and "Cancelled" columns
-    println("--------------------------------- We eliminate the \"CancellationCode\" and \"Cancelled\" columns -----------------------------------------------")
+    println("-------------------- We eliminate the \"CancellationCode\" and \"Cancelled\" columns -------------------")
     df = df.drop("Cancelled", "CancellationCode")
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
 
     // We delete the "year" and "status" columns since they do not provide more useful information
-    println("--------------------------------- We delete \"year\" and \"status\" in dfPlane dataset -----------------------------------------------")
+    println("------------------------- We delete \"year\" and \"status\" in dfPlane dataset -------------------------")
     dfPlane = dfPlane.drop("year").drop("status")
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
 
     // We join the two datasets
-    println("--------------------------------- Joining both datasets -----------------------------------------------")
+    println("--------------------------------------- Joining both datasets --------------------------------------")
     df = df.join(dfPlane, "tailNum")
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
 
@@ -135,30 +133,30 @@ object Main2 {
     df.show()
 
     // We clean the "issue_date" column from plane-data dataset as it is going to be used later
-    println("--------------------------------- We clean \"issue_date\" -----------------------------------------------")
+    println("--------------------------------------- We clean \"issue_date\" --------------------------------------")
     df = df.filter("issue_date is NOT NULL AND issue_date NOT LIKE 'None' AND issue_date NOT LIKE 'NA'")
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
 
     // We delete the plane tailnumbers that do not have any data from plane-data dataset
-    println("--------------------------------- We delete the plane tailnumbers that do not have any data from plane-data dataset -----------------------------------------------")
+    println("-------- We delete the plane tailnumbers that do not have any data from plane-data dataset ---------")
     df = df.filter("type is NOT NULL AND manufacturer is NOT NULL AND model is NOT NULL AND aircraft_type is NOT NULL AND engine_type is NOT NULL")
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
 
     // We check for NA values in the each column of the dataset and set them to null for the imputers to do their work
-    println("--------------------------------- Checking for NA values in the dataset to set them to null -----------------------------------------------")
+    println("-------------------- Checking for NA values in the dataset to set them to null ---------------------")
     for (i <- 0 until df.columns.drop(df.columns.indexOf("ArrDelay")).length) {
       val column = df.columns(i)
       df = df.withColumn(column, replaceNAWithNull(col(column)))
     }
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
 
-    println("--------------------------------- We delete the columns that only have NULL values -----------------------------------------------")
+    println("------------------------- We delete the columns that only have NULL values -------------------------")
     // Numerical columns for "mean" imputer and "most frequent" imputer
     var numColsMean = Array("DepTime", "CRSDepTime", "CRSArrTime", "CRSElapsedTime", "DepDelay", "Distance", "TaxiOut")
     var numColsMf = Array("Year", "Month", "DayofMonth", "DayOfWeek", "FlightNum")
@@ -178,48 +176,49 @@ object Main2 {
 
     df = df.drop(columnsToDrop2:_*).cache()
     var numCols = numColsMean ++ numColsMf
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
     df.show()
 
     /*
-    println("--------------------------------- We delete the columns that have NULL/NaN values -----------------------------------------------")
+    println("-------------------------- We delete the columns that have NULL/NaN values -------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     for (i <- 0 until df.columns.length) {
       val colName = df.columns(i)
       df = df.filter(colName + " is NOT NULL").filter(colName + " NOT LIKE 'NA'").filter(colName + " NOT LIKE 'Unknow'")
         .filter(colName + " NOT LIKE 'None'").filter(colName + " NOT LIKE ''").filter(colName + " NOT LIKE ' '")
     }
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
     */
 
     // We cast to Integer every column in order to be able to use the imputer
-    println("--------------------------------- We cast to Integer every column in order to be able to use the imputer -----------------------------------------------")
+    println("-------------- We cast to Integer every column in order to be able to use the imputer --------------")
     for (i <- 0 until df.columns.length) {
       val colName = df.columns(i)
       if (numCols.contains(colName) || colName == "ArrDelay")
         df = df.withColumn(colName,col(colName).cast(IntegerType))
     }
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
     df.show()
 
-
     // We look at the correlation between the explanatory variables. If any of them are high correlated that indicates
     // that one of them could be removed, as they produce a similar effect on the target variable
-    println("--------------------------------- Correlations between explanatory variables and target variable -----------------------------------------------")
+    println("------------------ Correlations between explanatory variables and target variable ------------------")
     for (i <- 0 until numCols.length) {
       val column = numCols(i)
       println("Correlation between ArrDelay and " + column + ":")
       println(df.stat.corr("ArrDelay", column, "pearson"))
     }
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
 
-    println("--------------------------------- Correlations between explanatory variables -----------------------------------------------")
+    println("---------------------------- Correlations between explanatory variables ----------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     for (i <- 0 until numCols.length) {
       val column = numCols(i)
       for(j <- i+1 until numCols.length) {
@@ -228,80 +227,69 @@ object Main2 {
         println(df.stat.corr(column, column2, "pearson"))
       }
     }
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
     /*
     // We delete the "CRSDepTime" and "CRSDepTime" columns as the correlation tell us that they produce a similar effect on the target variable
-    println("--------------------------------- We delete the \"CRSDepTime\" and \"CRSElapsedTime\" columns -----------------------------------------------")
+    println("--------------------- We delete the \"CRSDepTime\" and \"CRSElapsedTime\" columns ----------------------")
     df = df.drop("CRSDepTime", "CRSElapsedTime")
     numCols = numCols.filter(_ != "CRSDepTime").filter(_ != "CRSElapsedTime")
     numColsMean = numColsMean.filter(_ != "CRSDepTime").filter(_ != "CRSElapsedTime")
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
      */
 
     // We apply the "most frequent" imputer for some numerical columns
-    println("--------------------------------- We apply the \"most frequent\" imputer -----------------------------------------------")
+    println("-------------------------------- We apply the \"most frequent\" imputer ------------------------------")
     val imputer = new Imputer()
       .setInputCols(numColsMf)
       .setOutputCols(numColsMf)
       .setStrategy("mode")
     df = imputer.fit(df).transform(df)
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
 
     // We apply the "mean" imputer for the rest of the numerical columns
-    println("--------------------------------- We apply the \"mean\" imputer -----------------------------------------------")
+    println("----------------------------------- We apply the \"mean\" imputer ------------------------------------")
     imputer.setInputCols(numColsMean).setOutputCols(numColsMean).setStrategy("mean")
     df = imputer.fit(df).transform(df)
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
 
     // We create the column "PlaneAge" from the data in "Year" and "issue_date" to then remove the column "issue_date"
-    println("--------------------------------- We create the column \"PlaneAge\" from the data in \"Year\" and \"issue_date\" to then remove the column \"issue_date\" -----------------------------------------------")
+    println("---------------- We create the column \"PlaneAge\" and remove the column \"issue_date\" ----------------")
     df = df.withColumnRenamed("issue_date", "PlaneAge")
     df = df.withColumn("PlaneAge", col("Year") - year(to_date(col("PlaneAge").cast(StringType), "M/d/y")))
     //df = df.filter("PlaneAge >= 0")
     df = df.withColumn("PlaneAge", when(col("PlaneAge") < 0, 0).otherwise(col("PlaneAge")))
     numCols = numCols ++ Array("PlaneAge")
-    df.groupBy("PlaneAge").count().show()
-    
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
 
-    df.show()
-
-
     // We check for null values in the categorical columns and swap them with "unknown"
-    println("--------------------------------- We check for null values in the categorical columns and swap them with \"unknown\" -----------------------------------------------")
+    println("--------- We check for null values in the categorical columns and swap them with \"unknown\" ---------")
     for (i <- 0 until catColsDf.length) {
       val column = catColsDf(i)
       df = df.withColumn(column, replaceNullWithUnknown(col(column)))
     }
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
 
     // We change the value of "DepTime", "CRSDepTime" and "CRSArrTime" to strings containing values such as morning, night... in order to apply one hot encoder more efficiently
-    println("--------------------------------- We change the value of \"DepTime\", \"CRSDepTime\" and \"CRSArrTime\" -----------------------------------------------")
+    println("------------------ We change the value of \"DepTime\", \"CRSDepTime\" and \"CRSArrTime\" -----------------")
     df = df.withColumn("DepTime", replaceTimeWithDayPart(col("DepTime")))
     df = df.withColumn("CRSDepTime", replaceTimeWithDayPart(col("CRSDepTime")))
     df = df.withColumn("CRSArrTime", replaceTimeWithDayPart(col("CRSArrTime")))
     numCols = numCols.filter(_ != "DepTime").filter(_ != "CRSDepTime").filter(_ != "CRSArrTime")
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
-    df.groupBy("DepTime").count().show()
-    df.groupBy("CRSDepTime").count().show()
-    df.groupBy("CRSArrTime").count().show()
-    df.groupBy("CRSElapsedTime").count().show()
-
     df.show()
-
 
     // We divide the variables into numerical/continuous and categorical
     var columnsToIndex = Array[String]()
@@ -324,7 +312,7 @@ object Main2 {
     val indexer = new StringIndexer()
       .setInputCols(columnsToIndex)
       .setOutputCols(indexedColumns)
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
 
@@ -333,12 +321,11 @@ object Main2 {
     val ohe = new OneHotEncoder()
       .setInputCols(indexedColumns)
       .setOutputCols(catCols)
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
 
     val assCols = numCols ++ catCols
-
 
     // Declaration of the assembler that will extract the features from our variables
     println("--------------------------------- Extracting features from our data -----------------------------------------------")
@@ -372,7 +359,7 @@ object Main2 {
     df = df.drop(indexedColumns:_*)
     df = df.drop(columnsToIndex:_*)
     df = df.drop(catCols:_*)
-    df = df.drop(Array("Year", "DayOfWeek", "FlightNum", "DepDelay", "Distance", "TaxiOut", "DepTime", "CSRArrTime", "Month", "DayofMonth", "CRSElapsedTime", "CRSDepTime", "features"):_*)
+    df = df.drop(Array("Year", "DayOfWeek", "FlightNum", "DepDelay", "Distance", "TaxiOut", "DepTime", "CSRArrTime", "Month", "DayofMonth", "CRSElapsedTime", "CRSDepTime", "PlaneAge", "features"):_*)
     df.show()
 
 
@@ -477,10 +464,6 @@ object Main2 {
 
     val Array(trainingData, testData) = df.randomSplit(Array(0.7, 0.3), 10)
 
-     */
-
-    val Array(trainingData, testData) = df.randomSplit(Array(0.8, 0.2), 10)
-
 
     println("----------------------------------------------------------------------------- LINEAR REGRESSION ----------------------------------------------------------------------------")
 
@@ -508,14 +491,6 @@ object Main2 {
       .setMetricName("rmse")
 
 
-    // We define a 5-fold cross-validator for using the Root Mean Squared Error metric
-    val lrCrossValidatorRMSE = new CrossValidator()
-      .setEstimator(linearRegression)
-      .setEvaluator(lrEvaluatorRMSE)
-      .setEstimatorParamMaps(lrParamGrid)
-      .setNumFolds(5)
-
-
     // We create a regression evaluator for using the R Squared metric
     val lrEvaluatorR2 = new RegressionEvaluator()
       .setLabelCol("ArrDelay")
@@ -523,10 +498,10 @@ object Main2 {
       .setMetricName("r2")
 
 
-    // We define a 5-fold cross-validator for using the R Squared metric
-    val lrCrossValidatorR2 = new CrossValidator()
+    // We define a 5-fold cross-validator for using the Root Mean Squared Error metric
+    val lrCrossValidator = new CrossValidator()
       .setEstimator(linearRegression)
-      .setEvaluator(lrEvaluatorR2)
+      .setEvaluator(lrEvaluatorRMSE)
       .setEstimatorParamMaps(lrParamGrid)
       .setNumFolds(5)
 
@@ -534,26 +509,19 @@ object Main2 {
     // We train and tune the model using k-fold cross validation
     // to after that use the best model to make predictions on the test data
     // to then evaluate the predictions using the chosen evaluation metric
-    val lrModelRMSE = lrCrossValidatorRMSE.fit(trainingData)
-    val lrModelR2 = lrCrossValidatorR2.fit(trainingData)
+    val lrModel = lrCrossValidator.fit(trainingData)
 
-    println("Model parameters for RMSE:")
-    println(lrModelRMSE.bestModel.extractParamMap())
-    println("Model parameters for R2:")
-    println(lrModelR2.bestModel.extractParamMap())
+    println("Model parameters:")
+    println(lrModel.bestModel.extractParamMap())
 
-    val lrPredictionsRMSE = lrModelRMSE.transform(testData)
-    val lrPredictionsR2 = lrModelR2.transform(testData)
-
-    println("ArrDelay VS predictionLR for RMSE:")
-    lrPredictionsRMSE.select("ArrDelay", "predictionLR").show(10, truncate = false)
-    println("ArrDelay VS predictionLR for R2:")
-    lrPredictionsR2.select("ArrDelay", "predictionLR").show(10, truncate = false)
+    val lrPredictions = lrModel.transform(testData)
+    println("ArrDelay VS predictionLR:")
+    lrPredictions.select("ArrDelay", "predictionLR").show(10, truncate = false)
 
     println("--------------------------------- LR: Root Mean Squared Error -----------------------------------------------")
-    println(lrEvaluatorRMSE.evaluate(lrPredictionsRMSE))
+    println(lrEvaluatorRMSE.evaluate(lrPredictions))
     println("--------------------------------- LR: Coefficient of Determination (R2) -----------------------------------------------")
-    println(lrEvaluatorR2.evaluate(lrPredictionsR2))
+    println(lrEvaluatorR2.evaluate(lrPredictions))
 
     /*
 
