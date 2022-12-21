@@ -3,11 +3,11 @@ import org.apache.spark.ml.Pipeline
 import org.apache.spark.ml.evaluation.RegressionEvaluator
 import org.apache.spark.ml.feature._
 import org.apache.spark.ml.linalg.SparseVector
-import org.apache.spark.ml.regression.{RandomForestRegressor, DecisionTreeRegressor, LinearRegression}
+import org.apache.spark.ml.regression.{DecisionTreeRegressor, LinearRegression, RandomForestRegressor}
 import org.apache.spark.ml.tuning.{CrossValidator, ParamGridBuilder}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.IntegerType
+import org.apache.spark.sql.types.{IntegerType, StringType}
 import org.apache.spark.storage.StorageLevel
 
 
@@ -168,7 +168,7 @@ object Main2 {
       }
     }
 
-    df = df.drop(columnsToDrop2:_*)
+    df = df.drop(columnsToDrop2:_*).cache()
     var numCols = numColsMean ++ numColsMf
     println("--------------------------------- Done -----------------------------------------------")
     println()
@@ -255,7 +255,7 @@ object Main2 {
     // We create the column "PlaneAge" from the data in "Year" and "issue_date" to then remove the column "issue_date"
     println("--------------------------------- We create the column \"PlaneAge\" from the data in \"Year\" and \"issue_date\" to then remove the column \"issue_date\" -----------------------------------------------")
     df = df.withColumnRenamed("issue_date", "PlaneAge")
-    df = df.withColumn("PlaneAge", year(to_date(col("FlightDate"), "M/d/y")) - year(to_date(col("PlaneAge"), "M/d/y")))
+    df = df.withColumn("PlaneAge", col("Year") - year(to_date(col("PlaneAge").cast(StringType), "M/d/y")))
     println("--------------------------------- Done -----------------------------------------------")
     println()
     df.show()
