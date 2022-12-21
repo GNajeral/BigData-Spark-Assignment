@@ -281,6 +281,9 @@ object Main2 {
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
+    df.groupBy("CRSDepTime").count().show()
+    df.groupBy("CRSElapsedTime").count().show()
+
     df.show()
 
 
