@@ -3,11 +3,11 @@ import org.apache.spark.ml.Pipeline
 import org.apache.spark.ml.evaluation.RegressionEvaluator
 import org.apache.spark.ml.feature._
 import org.apache.spark.ml.linalg.SparseVector
-import org.apache.spark.ml.regression.{RandomForestRegressor, DecisionTreeRegressor, LinearRegression}
+import org.apache.spark.ml.regression.{DecisionTreeRegressor, LinearRegression, RandomForestRegressor}
 import org.apache.spark.ml.tuning.{CrossValidator, ParamGridBuilder}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.IntegerType
+import org.apache.spark.sql.types.{IntegerType, StringType}
 import org.apache.spark.storage.StorageLevel
 
 
@@ -125,6 +125,8 @@ object Main2 {
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
+    df.show()
+
 
     // We clean the "issue_date" column from plane-data dataset as it is going to be used later
     println("--------------------------------- We clean \"issue_date\" -----------------------------------------------")
@@ -168,7 +170,7 @@ object Main2 {
       }
     }
 
-    df = df.drop(columnsToDrop2:_*)
+    df = df.drop(columnsToDrop2:_*).cache()
     var numCols = numColsMean ++ numColsMf
     println("--------------------------------- Done -----------------------------------------------")
     println()
@@ -255,9 +257,16 @@ object Main2 {
     // We create the column "PlaneAge" from the data in "Year" and "issue_date" to then remove the column "issue_date"
     println("--------------------------------- We create the column \"PlaneAge\" from the data in \"Year\" and \"issue_date\" to then remove the column \"issue_date\" -----------------------------------------------")
     df = df.withColumnRenamed("issue_date", "PlaneAge")
-    df = df.withColumn("PlaneAge", year(to_date(col("FlightDate"), "M/d/y")) - year(to_date(col("PlaneAge"), "M/d/y")))
+    df = df.withColumn("PlaneAge", col("Year") - year(to_date(col("PlaneAge").cast(StringType), "M/d/y")))
+    //df = df.filter("PlaneAge >= 0")
+    df = df.withColumn("PlaneAge", when(col("PlaneAge") < 0, 0).otherwise("PlaneAge"))
+    numCols = numCols ++ Array("PlaneAge")
+    df.groupBy("PlaneAge").count().show()
+
     println("--------------------------------- Done -----------------------------------------------")
     println()
+
+
     df.show()
 
 
@@ -271,13 +280,21 @@ object Main2 {
     println()
 
 
-    // We change the value of "DepTime" and "CRSArrTime" to strings containing values such as morning, night... in order to apply one hot encoder more efficiently
-    println("--------------------------------- We change the value of \"DepTime\" and \"CRSArrTime\" -----------------------------------------------")
+    // We change the value of "DepTime", "CRSDepTime" and "CRSArrTime" to strings containing values such as morning, night... in order to apply one hot encoder more efficiently
+    println("--------------------------------- We change the value of \"DepTime\", \"CRSDepTime\" and \"CRSArrTime\" -----------------------------------------------")
     df = df.withColumn("DepTime", replaceTimeWithDayPart(col("DepTime")))
+    df = df.withColumn("CRSDepTime", replaceTimeWithDayPart(col("CRSDepTime")))
     df = df.withColumn("CRSArrTime", replaceTimeWithDayPart(col("CRSArrTime")))
-    numCols = numCols.filter(_ != "DepTime").filter(_ != "CRSArrTime")
+    numCols = numCols.filter(_ != "DepTime").filter(_ != "CRSDepTime").filter(_ != "CRSArrTime")
     println("--------------------------------- Done -----------------------------------------------")
     println()
+
+    df.groupBy("DepTime").count().show()
+    df.groupBy("CRSDepTime").count().show()
+    df.groupBy("CRSArrTime").count().show()
+    df.groupBy("CRSElapsedTime").count().show()
+
+    df.show()
 
 
     // We divide the variables into numerical/continuous and categorical
@@ -349,7 +366,7 @@ object Main2 {
     df = df.drop(indexedColumns:_*)
     df = df.drop(columnsToIndex:_*)
     df = df.drop(catCols:_*)
-    df = df.drop(Array("Year", "DayOfWeek", "FlightNum", "DepDelay", "Distance", "TaxiOut", "DepTime", "CSRArrTime", "Month", "DayofMonth", "features"):_*)
+    df = df.drop(Array("Year", "DayOfWeek", "FlightNum", "DepDelay", "Distance", "TaxiOut", "DepTime", "CSRArrTime", "Month", "DayofMonth", "CRSElapsedTime", "CRSDepTime", "features"):_*)
     df.show()
 
 
@@ -357,7 +374,6 @@ object Main2 {
     println("----------------------------------------------------------------------------- DATA MODELING ----------------------------------------------------------------------------")
     println("------------------------------------------------------------------------------------------------------------------------------------------------------------------------")
     println()
-
 
     /*
 
@@ -370,7 +386,7 @@ object Main2 {
       .setLabelCol("ArrDelay")
       .setOutputCol("selectedFeatures")
 
-    
+
     val selectorPercentile = new UnivariateFeatureSelector()
       .setFeatureType("continuous")
       .setLabelType("continuous")
@@ -379,8 +395,8 @@ object Main2 {
       .setFeaturesCol("normFeatures")
       .setLabelCol("ArrDelay")
       .setOutputCol("selectedFeatures")
-      
-      
+
+
     val selectorFalsePositiveRate = new UnivariateFeatureSelector()
       .setFeatureType("continuous")
       .setLabelType("continuous")
@@ -390,7 +406,7 @@ object Main2 {
       .setLabelCol("ArrDelay")
       .setOutputCol("selectedFeatures")
 
-    
+
     val selectorFalseDiscoveryRate = new UnivariateFeatureSelector()
       .setFeatureType("continuous")
       .setLabelType("continuous")
@@ -400,7 +416,7 @@ object Main2 {
       .setLabelCol("ArrDelay")
       .setOutputCol("selectedFeatures")
 
-    
+
     val selectorFamilywiseErrorRate = new UnivariateFeatureSelector()
       .setFeatureType("continuous")
       .setLabelType("continuous")
@@ -593,96 +609,96 @@ object Main2 {
      */
 
 
-//    println("------------------------------------------------------------------------ DECISION TREE REGRESSOR -----------------------------------------------------------------------")
-//
-//    // We create a decision tree regressor algorithm
-//    val decisionTree = new DecisionTreeRegressor()
-//      .setLabelCol("ArrDelay")
-//      .setFeaturesCol("normFeatures")
-//      .setPredictionCol("predictionDTR")
-//
-//
-//    // We create a regression evaluator for using the R Squared metric
-//    val dtrEvaluatorR2 = new RegressionEvaluator()
-//      .setLabelCol("ArrDelay")
-//      .setPredictionCol("predictionDTR")
-//      .setMetricName("r2")
-//
-//
-//    // We create a regression evaluator for using the Root Mean Squared Error metric
-//    val dtrEvaluatorRMSE = new RegressionEvaluator()
-//      .setLabelCol("ArrDelay")
-//      .setPredictionCol("predictionDTR")
-//      .setMetricName("rmse")
-//
-//
-//    // We define a 5-fold cross-validator
-//    val dtrCrossValidator = new CrossValidator()
-//      .setEstimator(decisionTree)
-//      .setEvaluator(dtrEvaluatorRMSE)
-//      .setEstimatorParamMaps(new ParamGridBuilder().build())
-//      .setNumFolds(5)
-//
-//
-//    // We train and tune the model using k-fold cross validation
-//    // to after that use the best model to make predictions on the test data
-//    // to then evaluate the predictions using the chosen evaluation metric
-//    val dtrModel = dtrCrossValidator.fit(trainingData)
-//    println("Model parameters:")
-//    println(dtrModel.bestModel.extractParamMap())
-//    val dtrPredictions = dtrModel.transform(testData)
-//    println("ArrDelay VS predictionDTR:")
-//    dtrPredictions.select("ArrDelay", "predictionDTR").show(10, false)
-//    println("--------------------------------- DTR: Root Mean Squared Error -----------------------------------------------")
-//    println(dtrEvaluatorRMSE.evaluate(dtrPredictions))
-//    println("--------------------------------- DTR: Coefficient of Determination (R2) -----------------------------------------------")
-//    println(dtrEvaluatorR2.evaluate(dtrPredictions))
+    //    println("------------------------------------------------------------------------ DECISION TREE REGRESSOR -----------------------------------------------------------------------")
+    //
+    //    // We create a decision tree regressor algorithm
+    //    val decisionTree = new DecisionTreeRegressor()
+    //      .setLabelCol("ArrDelay")
+    //      .setFeaturesCol("normFeatures")
+    //      .setPredictionCol("predictionDTR")
+    //
+    //
+    //    // We create a regression evaluator for using the R Squared metric
+    //    val dtrEvaluatorR2 = new RegressionEvaluator()
+    //      .setLabelCol("ArrDelay")
+    //      .setPredictionCol("predictionDTR")
+    //      .setMetricName("r2")
+    //
+    //
+    //    // We create a regression evaluator for using the Root Mean Squared Error metric
+    //    val dtrEvaluatorRMSE = new RegressionEvaluator()
+    //      .setLabelCol("ArrDelay")
+    //      .setPredictionCol("predictionDTR")
+    //      .setMetricName("rmse")
+    //
+    //
+    //    // We define a 5-fold cross-validator
+    //    val dtrCrossValidator = new CrossValidator()
+    //      .setEstimator(decisionTree)
+    //      .setEvaluator(dtrEvaluatorRMSE)
+    //      .setEstimatorParamMaps(new ParamGridBuilder().build())
+    //      .setNumFolds(5)
+    //
+    //
+    //    // We train and tune the model using k-fold cross validation
+    //    // to after that use the best model to make predictions on the test data
+    //    // to then evaluate the predictions using the chosen evaluation metric
+    //    val dtrModel = dtrCrossValidator.fit(trainingData)
+    //    println("Model parameters:")
+    //    println(dtrModel.bestModel.extractParamMap())
+    //    val dtrPredictions = dtrModel.transform(testData)
+    //    println("ArrDelay VS predictionDTR:")
+    //    dtrPredictions.select("ArrDelay", "predictionDTR").show(10, false)
+    //    println("--------------------------------- DTR: Root Mean Squared Error -----------------------------------------------")
+    //    println(dtrEvaluatorRMSE.evaluate(dtrPredictions))
+    //    println("--------------------------------- DTR: Coefficient of Determination (R2) -----------------------------------------------")
+    //    println(dtrEvaluatorR2.evaluate(dtrPredictions))
 
 
-//    println("------------------------------------------------------------------------ RANDOM FOREST REGRESSOR -----------------------------------------------------------------------")
-//
-//    // We create a random forest regressor algorithm
-//    val randomForest = new RandomForestRegressor()
-//      .setLabelCol("ArrDelay")
-//      .setFeaturesCol("normFeatures")
-//      .setPredictionCol("predictionRF")
-//
-//
-//    // We create a regression evaluator for using the R Squared metric
-//    val rfEvaluatorR2 = new RegressionEvaluator()
-//      .setLabelCol("ArrDelay")
-//      .setPredictionCol("predictionRF")
-//      .setMetricName("r2")
-//
-//
-//    // We create a regression evaluator for using the Root Mean Squared Error metric
-//    val rfEvaluatorRMSE = new RegressionEvaluator()
-//      .setLabelCol("ArrDelay")
-//      .setPredictionCol("predictionRF")
-//      .setMetricName("rmse")
-//
-//
-//    // We define a 5-fold cross-validator
-//    val rfCrossValidator = new CrossValidator()
-//      .setEstimator(randomForest)
-//      .setEvaluator(rfEvaluatorRMSE)
-//      .setEstimatorParamMaps(new ParamGridBuilder().build())
-//      .setNumFolds(5)
-//
-//
-//    // We train and tune the model using k-fold cross validation
-//    // to after that use the best model to make predictions on the test data
-//    // to then evaluate the predictions using the chosen evaluation metric
-//    val rfModel = rfCrossValidator.fit(trainingData)
-//    println("Model parameters:")
-//    println(rfModel.bestModel.extractParamMap())
-//    val rfPredictions = rfModel.transform(testData)
-//    println("ArrDelay VS predictionRF:")
-//    rfPredictions.select("ArrDelay", "predictionRF").show(10, false)
-//    println("--------------------------------- RF: Root Mean Squared Error -----------------------------------------------")
-//    println(rfEvaluatorRMSE.evaluate(rfPredictions))
-//    println("--------------------------------- RF: Coefficient of Determination (R2) -----------------------------------------------")
-//    println(rfEvaluatorR2.evaluate(rfPredictions))
+    //    println("------------------------------------------------------------------------ RANDOM FOREST REGRESSOR -----------------------------------------------------------------------")
+    //
+    //    // We create a random forest regressor algorithm
+    //    val randomForest = new RandomForestRegressor()
+    //      .setLabelCol("ArrDelay")
+    //      .setFeaturesCol("normFeatures")
+    //      .setPredictionCol("predictionRF")
+    //
+    //
+    //    // We create a regression evaluator for using the R Squared metric
+    //    val rfEvaluatorR2 = new RegressionEvaluator()
+    //      .setLabelCol("ArrDelay")
+    //      .setPredictionCol("predictionRF")
+    //      .setMetricName("r2")
+    //
+    //
+    //    // We create a regression evaluator for using the Root Mean Squared Error metric
+    //    val rfEvaluatorRMSE = new RegressionEvaluator()
+    //      .setLabelCol("ArrDelay")
+    //      .setPredictionCol("predictionRF")
+    //      .setMetricName("rmse")
+    //
+    //
+    //    // We define a 5-fold cross-validator
+    //    val rfCrossValidator = new CrossValidator()
+    //      .setEstimator(randomForest)
+    //      .setEvaluator(rfEvaluatorRMSE)
+    //      .setEstimatorParamMaps(new ParamGridBuilder().build())
+    //      .setNumFolds(5)
+    //
+    //
+    //    // We train and tune the model using k-fold cross validation
+    //    // to after that use the best model to make predictions on the test data
+    //    // to then evaluate the predictions using the chosen evaluation metric
+    //    val rfModel = rfCrossValidator.fit(trainingData)
+    //    println("Model parameters:")
+    //    println(rfModel.bestModel.extractParamMap())
+    //    val rfPredictions = rfModel.transform(testData)
+    //    println("ArrDelay VS predictionRF:")
+    //    rfPredictions.select("ArrDelay", "predictionRF").show(10, false)
+    //    println("--------------------------------- RF: Root Mean Squared Error -----------------------------------------------")
+    //    println(rfEvaluatorRMSE.evaluate(rfPredictions))
+    //    println("--------------------------------- RF: Coefficient of Determination (R2) -----------------------------------------------")
+    //    println(rfEvaluatorR2.evaluate(rfPredictions))
 
 
     /*
