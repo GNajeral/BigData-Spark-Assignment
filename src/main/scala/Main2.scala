@@ -113,17 +113,8 @@ object Main2 {
 
 
     // We delete the "year" and "status" columns since they do not provide more useful information
-    // Moreover, we clean the "issue_date" column as it is going to be used later
-    println("--------------------------------- We delete \"year\" and \"status\" and we clean \"issue_date\" in dfPlane dataset -----------------------------------------------")
+    println("--------------------------------- We delete \"year\" and \"status\" in dfPlane dataset -----------------------------------------------")
     dfPlane = dfPlane.drop("year").drop("status")
-    dfPlane = dfPlane.filter("issue_date is NOT NULL AND issue_date NOT LIKE 'None'")
-    println("--------------------------------- Done -----------------------------------------------")
-    println()
-
-
-    // We delete the plane tailnumbers that do not have any data from plane-data dataset
-    println("--------------------------------- We delete the plane tailnumbers that do not have any data from plane-data dataset -----------------------------------------------")
-    dfPlane = dfPlane.filter("type is NOT NULL AND manufacturer is NOT NULL AND model is NOT NULL AND aircraft_type is NOT NULL AND engine_type is NOT NULL")
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
@@ -131,6 +122,20 @@ object Main2 {
     // We join the two datasets
     println("--------------------------------- Joining both datasets -----------------------------------------------")
     df = df.join(dfPlane, "tailNum")
+    println("--------------------------------- Done -----------------------------------------------")
+    println()
+
+
+    // We clean the "issue_date" column from plane-data dataset as it is going to be used later
+    println("--------------------------------- We clean \"issue_date\" -----------------------------------------------")
+    df = df.filter("issue_date is NOT NULL AND issue_date NOT LIKE 'None' AND issue_date NOT LIKE 'NA'")
+    println("--------------------------------- Done -----------------------------------------------")
+    println()
+
+
+    // We delete the plane tailnumbers that do not have any data from plane-data dataset
+    println("--------------------------------- We delete the plane tailnumbers that do not have any data from plane-data dataset -----------------------------------------------")
+    df = df.filter("type is NOT NULL AND manufacturer is NOT NULL AND model is NOT NULL AND aircraft_type is NOT NULL AND engine_type is NOT NULL")
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
@@ -251,7 +256,6 @@ object Main2 {
 
     // We create the column "PlaneAge" from the data in "Year" and "issue_date" to then remove the column "issue_date"
     println("--------------------------------- We create the column \"PlaneAge\" from the data in \"Year\" and \"issue_date\" to then remove the column \"issue_date\" -----------------------------------------------")
-    df = df.filter("issue_date is NOT NULL")
     df = df.withColumnRenamed("issue_date", "PlaneAge")
     df = df.withColumn("PlaneAge", year(to_date(col("FlightDate"), "M/d/y")) - year(to_date(col("PlaneAge"), "M/d/y")))
     println("--------------------------------- Done -----------------------------------------------")
@@ -356,6 +360,8 @@ object Main2 {
     println("------------------------------------------------------------------------------------------------------------------------------------------------------------------------")
     println()
 
+    /*
+
     val selectorNumTopFeatures = new UnivariateFeatureSelector()
       .setFeatureType("continuous")
       .setLabelType("continuous")
@@ -445,7 +451,10 @@ object Main2 {
     val Array(trainingDataFpr, testDataFpr) = dfFpr.randomSplit(Array(0.7, 0.3), 10)
     val Array(trainingDataFdr, testDataFdr) = dfFdr.randomSplit(Array(0.7, 0.3), 10)
     val Array(trainingDataFwe, testDataFwe) = dfFwe.randomSplit(Array(0.7, 0.3), 10)
-//    val Array(trainingData, testData) = df.randomSplit(Array(0.7, 0.3), 10)
+
+     */
+
+    val Array(trainingData, testData) = df.randomSplit(Array(0.7, 0.3), 10)
 
 
     println("----------------------------------------------------------------------------- LINEAR REGRESSION ----------------------------------------------------------------------------")
@@ -467,13 +476,6 @@ object Main2 {
       .build()
 
 
-    // We create a regression evaluator for using the R Squared metric
-    val lrEvaluatorR2 = new RegressionEvaluator()
-      .setLabelCol("ArrDelay")
-      .setPredictionCol("predictionLR")
-      .setMetricName("r2")
-
-
     // We create a regression evaluator for using the Root Mean Squared Error metric
     val lrEvaluatorRMSE = new RegressionEvaluator()
       .setLabelCol("ArrDelay")
@@ -481,27 +483,54 @@ object Main2 {
       .setMetricName("rmse")
 
 
-    // We define a 5-fold cross-validator
-    val lrCrossValidator = new CrossValidator()
+    // We define a 5-fold cross-validator for using the Root Mean Squared Error metric
+    val lrCrossValidatorRMSE = new CrossValidator()
       .setEstimator(linearRegression)
       .setEvaluator(lrEvaluatorRMSE)
       .setEstimatorParamMaps(lrParamGrid)
       .setNumFolds(5)
 
 
-//    // We train and tune the model using k-fold cross validation
-//    // to after that use the best model to make predictions on the test data
-//    // to then evaluate the predictions using the chosen evaluation metric
-//    val lrModel = lrCrossValidator.fit(trainingData)
-//    println("Model parameters:")
-//    println(lrModel.bestModel.extractParamMap())
-//    val lrPredictions = lrModel.transform(testData)
-//    println("ArrDelay VS predictionLR:")
-//    lrPredictions.select("ArrDelay", "predictionLR").show(10, truncate = false)
-//    println("--------------------------------- LR: Root Mean Squared Error -----------------------------------------------")
-//    println(lrEvaluatorRMSE.evaluate(lrPredictions))
-//    println("--------------------------------- LR: Coefficient of Determination (R2) -----------------------------------------------")
-//    println(lrEvaluatorR2.evaluate(lrPredictions))
+    // We create a regression evaluator for using the R Squared metric
+    val lrEvaluatorR2 = new RegressionEvaluator()
+      .setLabelCol("ArrDelay")
+      .setPredictionCol("predictionLR")
+      .setMetricName("r2")
+
+
+    // We define a 5-fold cross-validator for using the R Squared metric
+    val lrCrossValidatorR2 = new CrossValidator()
+      .setEstimator(linearRegression)
+      .setEvaluator(lrEvaluatorR2)
+      .setEstimatorParamMaps(lrParamGrid)
+      .setNumFolds(5)
+
+
+    // We train and tune the model using k-fold cross validation
+    // to after that use the best model to make predictions on the test data
+    // to then evaluate the predictions using the chosen evaluation metric
+    val lrModelRMSE = lrCrossValidatorRMSE.fit(trainingData)
+    val lrModelR2 = lrCrossValidatorR2.fit(trainingData)
+
+    println("Model parameters for RMSE:")
+    println(lrModelRMSE.bestModel.extractParamMap())
+    println("Model parameters for R2:")
+    println(lrModelR2.bestModel.extractParamMap())
+
+    val lrPredictionsRMSE = lrModelRMSE.transform(testData)
+    val lrPredictionsR2 = lrModelR2.transform(testData)
+
+    println("ArrDelay VS predictionLR for RMSE:")
+    lrPredictionsRMSE.select("ArrDelay", "predictionLR").show(10, truncate = false)
+    println("ArrDelay VS predictionLR for R2:")
+    lrPredictionsR2.select("ArrDelay", "predictionLR").show(10, truncate = false)
+
+    println("--------------------------------- LR: Root Mean Squared Error -----------------------------------------------")
+    println(lrEvaluatorRMSE.evaluate(lrPredictionsRMSE))
+    println("--------------------------------- LR: Coefficient of Determination (R2) -----------------------------------------------")
+    println(lrEvaluatorR2.evaluate(lrPredictionsR2))
+
+    /*
 
     val lrModelNtf = lrCrossValidator.fit(trainingDataNtf)
     println("Model parameters - NumTopFeatures:")
@@ -561,6 +590,8 @@ object Main2 {
     println(lrEvaluatorRMSE.evaluate(lrPredictionsFwe))
     println("--------------------------------- LR: Coefficient of Determination (R2) - Family-wise Error Rate -----------------------------------------------")
     println(lrEvaluatorR2.evaluate(lrPredictionsFwe))
+
+     */
 
 
 //    println("------------------------------------------------------------------------ DECISION TREE REGRESSOR -----------------------------------------------------------------------")
