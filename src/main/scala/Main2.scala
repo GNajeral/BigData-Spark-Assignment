@@ -225,7 +225,7 @@ object Main2 {
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
-
+    /*
     // We delete the "CRSDepTime" and "CRSDepTime" columns as the correlation tell us that they produce a similar effect on the target variable
     println("--------------------------------- We delete the \"CRSDepTime\" and \"CRSElapsedTime\" columns -----------------------------------------------")
     df = df.drop("CRSDepTime", "CRSElapsedTime")
@@ -233,17 +233,18 @@ object Main2 {
     numColsMean = numColsMean.filter(_ != "CRSDepTime").filter(_ != "CRSElapsedTime")
     println("--------------------------------- Done -----------------------------------------------")
     println()
-
+     */
 
     // We apply the "most frequent" imputer for some numerical columns
     println("--------------------------------- We apply the \"most frequent\" imputer -----------------------------------------------")
     val imputer = new Imputer()
-      .setInputCols(numColsMf)
-      .setOutputCols(numColsMf)
-      .setStrategy("mode")
+      //.setInputCols(numColsMf)
+      //.setOutputCols(numColsMf)
+      //.setStrategy("mode")
     df = imputer.fit(df).transform(df)
     println("--------------------------------- Done -----------------------------------------------")
     println()
+
 
 
     // We apply the "mean" imputer for the rest of the numerical columns
@@ -275,9 +276,10 @@ object Main2 {
 
     // We change the value of "DepTime" and "CRSArrTime" to strings containing values such as morning, night... in order to apply one hot encoder more efficiently
     println("--------------------------------- We change the value of \"DepTime\" and \"CRSArrTime\" -----------------------------------------------")
-    df = df.withColumn("DepTime", replaceTimeWithDayPart(col("DepTime")))
+    //df = df.withColumn("DepTime", replaceTimeWithDayPart(col("DepTime")))
     df = df.withColumn("CRSArrTime", replaceTimeWithDayPart(col("CRSArrTime")))
-    numCols = numCols.filter(_ != "DepTime").filter(_ != "CRSArrTime")
+    //numCols = numCols.filter(_ != "DepTime").filter(_ != "CRSArrTime")
+    numCols = numCols.filter(_ != "CRSArrTime")
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
