@@ -275,9 +275,13 @@ object Main2 {
     println("--------------------------------- We change the value of \"DepTime\" and \"CRSArrTime\" -----------------------------------------------")
     df = df.withColumn("DepTime", replaceTimeWithDayPart(col("DepTime")))
     df = df.withColumn("CRSArrTime", replaceTimeWithDayPart(col("CRSArrTime")))
+    df = df.withColumn("CRSDepTime", replaceTimeWithDayPart(col("CRSDepTime")))
+    df = df.withColumn("CRSElapsedTime", replaceTimeWithDayPart(col("CRSElapsedTime")))
     numCols = numCols.filter(_ != "DepTime").filter(_ != "CRSArrTime")
     println("--------------------------------- Done -----------------------------------------------")
     println()
+
+    df.show()
 
 
     // We divide the variables into numerical/continuous and categorical
@@ -349,7 +353,7 @@ object Main2 {
     df = df.drop(indexedColumns:_*)
     df = df.drop(columnsToIndex:_*)
     df = df.drop(catCols:_*)
-    df = df.drop(Array("Year", "DayOfWeek", "FlightNum", "DepDelay", "Distance", "TaxiOut", "DepTime", "CSRArrTime", "Month", "DayofMonth", "features"):_*)
+    df = df.drop(Array("Year", "DayOfWeek", "FlightNum", "DepDelay", "Distance", "TaxiOut", "DepTime", "CSRArrTime", "Month", "DayofMonth", "CRSElapsedTime", "CRSDepTime", "features"):_*)
     df.show()
 
 
