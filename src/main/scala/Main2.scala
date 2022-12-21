@@ -262,7 +262,7 @@ object Main2 {
     df = df.withColumn("PlaneAge", when(col("PlaneAge") < 0, 0).otherwise("PlaneAge"))
     numCols = numCols ++ Array("PlaneAge")
     df.groupBy("PlaneAge").count().show()
-
+    
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
@@ -470,6 +470,10 @@ object Main2 {
      */
 
     val Array(trainingData, testData) = df.randomSplit(Array(0.7, 0.3), 10)
+
+     */
+
+    val Array(trainingData, testData) = df.randomSplit(Array(0.8, 0.2), 10)
 
 
     println("----------------------------------------------------------------------------- LINEAR REGRESSION ----------------------------------------------------------------------------")
