@@ -277,7 +277,7 @@ object Main2 {
     df = df.withColumn("CRSArrTime", replaceTimeWithDayPart(col("CRSArrTime")))
     df = df.withColumn("CRSDepTime", replaceTimeWithDayPart(col("CRSDepTime")))
     df = df.withColumn("CRSElapsedTime", replaceTimeWithDayPart(col("CRSElapsedTime")))
-    numCols = numCols.filter(_ != "DepTime").filter(_ != "CRSArrTime")
+    numCols = numCols.filter(_ != "DepTime").filter(_ != "CRSArrTime").filter(_ != "CRSDepTime").filter(_ != "CRSElapsedTime")
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
