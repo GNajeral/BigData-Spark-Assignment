@@ -202,12 +202,10 @@ object Main2 {
     // We look at the correlation between the explanatory variables. If any of them are high correlated that indicates
     // that one of them could be removed, as they produce a similar effect on the target variable
     println("--------------------------------- Correlations between explanatory variables and target variable -----------------------------------------------")
-    for (i <- 0 until df.columns.length) {
-      val column = df.columns(i)
-      if (numCols.contains(column)) {
-        println("Correlation between ArrDelay and " + column + ":")
-        println(df.stat.corr("ArrDelay", column, "pearson"))
-      }
+    for (i <- 0 until numCols.length) {
+      val column = numCols(i)
+      println("Correlation between ArrDelay and " + column + ":")
+      println(df.stat.corr("ArrDelay", column, "pearson"))
     }
     println("--------------------------------- Done -----------------------------------------------")
     println()
@@ -238,13 +236,12 @@ object Main2 {
     // We apply the "most frequent" imputer for some numerical columns
     println("--------------------------------- We apply the \"most frequent\" imputer -----------------------------------------------")
     val imputer = new Imputer()
-      //.setInputCols(numColsMf)
-      //.setOutputCols(numColsMf)
-      //.setStrategy("mode")
+      .setInputCols(numColsMf)
+      .setOutputCols(numColsMf)
+      .setStrategy("mode")
     df = imputer.fit(df).transform(df)
     println("--------------------------------- Done -----------------------------------------------")
     println()
-
 
 
     // We apply the "mean" imputer for the rest of the numerical columns
@@ -276,10 +273,9 @@ object Main2 {
 
     // We change the value of "DepTime" and "CRSArrTime" to strings containing values such as morning, night... in order to apply one hot encoder more efficiently
     println("--------------------------------- We change the value of \"DepTime\" and \"CRSArrTime\" -----------------------------------------------")
-    //df = df.withColumn("DepTime", replaceTimeWithDayPart(col("DepTime")))
+    df = df.withColumn("DepTime", replaceTimeWithDayPart(col("DepTime")))
     df = df.withColumn("CRSArrTime", replaceTimeWithDayPart(col("CRSArrTime")))
-    //numCols = numCols.filter(_ != "DepTime").filter(_ != "CRSArrTime")
-    numCols = numCols.filter(_ != "CRSArrTime")
+    numCols = numCols.filter(_ != "DepTime").filter(_ != "CRSArrTime")
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
