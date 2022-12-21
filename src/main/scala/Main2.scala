@@ -68,7 +68,7 @@ object Main2 {
     println()
 
     // We delete the forbidden columns
-    println("--------------------------------- We delete the forbidden columns -----------------------------------------------")
+    println("--------------------------------- We delete the forbidden columns ----------------------------------")
     val columnsToDrop = Array("ArrTime", "ActualElapsedTime", "AirTime", "TaxiIn", "Diverted", "CarrierDelay", "WeatherDelay", "NASDelay", "SecurityDelay", "LateAircraftDelay")
     df = df.drop(columnsToDrop:_*)
     println("--------------------------------- Done -----------------------------------------------")
@@ -125,8 +125,14 @@ object Main2 {
     println("--------------------------------- Done -----------------------------------------------")
     println()
 
-    df.show()
 
+    // We delete the "TailNum" and "UniqueCarrier" columns as they are IDs and do not provide huge value
+    println("----------------------- We delete the \"TailNum\" and \"UniqueCarrier\" columns ------------------------")
+    df = df.drop("TailNum", "UniqueCarrier")
+    println("----------------------------------------------- Done -----------------------------------------------")
+    println()
+
+    df.show()
 
     // We clean the "issue_date" column from plane-data dataset as it is going to be used later
     println("--------------------------------- We clean \"issue_date\" -----------------------------------------------")
@@ -156,7 +162,7 @@ object Main2 {
     // Numerical columns for "mean" imputer and "most frequent" imputer
     var numColsMean = Array("DepTime", "CRSDepTime", "CRSArrTime", "CRSElapsedTime", "DepDelay", "Distance", "TaxiOut")
     var numColsMf = Array("Year", "Month", "DayofMonth", "DayOfWeek", "FlightNum")
-    var catColsDf = Array("UniqueCarrier", "TailNum", "Origin", "Dest", "type", "manufacturer", "model", "aircraft_type", "engine_type")
+    var catColsDf = Array("Origin", "Dest", "type", "manufacturer", "model", "aircraft_type", "engine_type")
     var columnsToDrop2 = df.columns
     for (i <- 0 until df.columns.length) {
       val column = df.columns(i)
@@ -259,7 +265,7 @@ object Main2 {
     df = df.withColumnRenamed("issue_date", "PlaneAge")
     df = df.withColumn("PlaneAge", col("Year") - year(to_date(col("PlaneAge").cast(StringType), "M/d/y")))
     //df = df.filter("PlaneAge >= 0")
-    df = df.withColumn("PlaneAge", when(col("PlaneAge") < 0, 0).otherwise("PlaneAge"))
+    df = df.withColumn("PlaneAge", when(col("PlaneAge") < 0, 0).otherwise(col("PlaneAge")))
     numCols = numCols ++ Array("PlaneAge")
     df.groupBy("PlaneAge").count().show()
     
