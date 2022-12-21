@@ -308,7 +308,7 @@ object Main2 {
 
 
     // Declaration of the indexer that will transform entries to integer values
-    println("--------------------------------- Declaration of the indexer that will transform entries to integer values -----------------------------------------------")
+    println("------------- Declaration of the indexer that will transform entries to integer values -------------")
     val indexer = new StringIndexer()
       .setInputCols(columnsToIndex)
       .setOutputCols(indexedColumns)
@@ -317,7 +317,7 @@ object Main2 {
 
 
     // Declaration of the one hot encoder that will process the categorical variables
-    println("--------------------------------- Declaration of the one hot encoder that will process the categorical variables -----------------------------------------------")
+    println("---------- Declaration of the one hot encoder that will process the categorical variables ----------")
     val ohe = new OneHotEncoder()
       .setInputCols(indexedColumns)
       .setOutputCols(catCols)
@@ -328,31 +328,31 @@ object Main2 {
     val assCols = numCols ++ catCols
 
     // Declaration of the assembler that will extract the features from our variables
-    println("--------------------------------- Extracting features from our data -----------------------------------------------")
+    println("-------------------------------- Extracting features from our data ---------------------------------")
     val assembler = new VectorAssembler()
       .setInputCols(assCols)
       .setOutputCol("features")
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
 
     // Normalizing the extracted features
-    println("--------------------------------- Normalizing the extracted features -----------------------------------------------")
+    println("-------------------------------- Normalizing the extracted features --------------------------------")
     val normalizer = new Normalizer()
       .setInputCol("features")
       .setOutputCol("normFeatures")
       .setP(1.0)
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
 
     // We use a pipeline in order to create a sequence of run stages
-    println("--------------------------------- Use of a pipeline -----------------------------------------------")
+    println("---------------------------------------- Use of a pipeline -----------------------------------------")
     val pipeline = new Pipeline()
       .setStages(Array(indexer, ohe, assembler, normalizer))
     df = pipeline.fit(df).transform(df)
     df.printSchema()
-    println("--------------------------------- Done -----------------------------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
 
@@ -363,9 +363,9 @@ object Main2 {
     df.show()
 
 
-    println("------------------------------------------------------------------------------------------------------------------------------------------------------------------------")
-    println("----------------------------------------------------------------------------- DATA MODELING ----------------------------------------------------------------------------")
-    println("------------------------------------------------------------------------------------------------------------------------------------------------------------------------")
+    println("----------------------------------------------------------------------------------------------------------------------------------")
+    println("--------------------------------------------------------- DATA MODELING ----------------------------------------------------------")
+    println("----------------------------------------------------------------------------------------------------------------------------------")
     println()
 
     /*
@@ -464,8 +464,7 @@ object Main2 {
 
     val Array(trainingData, testData) = df.randomSplit(Array(0.7, 0.3), 10)
 
-
-    println("----------------------------------------------------------------------------- LINEAR REGRESSION ----------------------------------------------------------------------------")
+    println("------------------------------------------------------- LINEAR REGRESSION --------------------------------------------------------")
 
     // We create a linear regression learning algorithm
     val linearRegression = new LinearRegression()
@@ -518,9 +517,9 @@ object Main2 {
     println("ArrDelay VS predictionLR:")
     lrPredictions.select("ArrDelay", "predictionLR").show(10, truncate = false)
 
-    println("--------------------------------- LR: Root Mean Squared Error -----------------------------------------------")
+    println("------------------------------------ LR: Root Mean Squared Error -----------------------------------")
     println(lrEvaluatorRMSE.evaluate(lrPredictions))
-    println("--------------------------------- LR: Coefficient of Determination (R2) -----------------------------------------------")
+    println("------------------------------- LR: Coefficient of Determination (R2) ------------------------------")
     println(lrEvaluatorR2.evaluate(lrPredictions))
 
     /*
@@ -587,7 +586,7 @@ object Main2 {
      */
 
 
-    //    println("------------------------------------------------------------------------ DECISION TREE REGRESSOR -----------------------------------------------------------------------")
+    //    println("---------------------------------------------------- DECISION TREE REGRESSOR -----------------------------------------------------")
     //
     //    // We create a decision tree regressor algorithm
     //    val decisionTree = new DecisionTreeRegressor()
@@ -633,7 +632,7 @@ object Main2 {
     //    println(dtrEvaluatorR2.evaluate(dtrPredictions))
 
 
-    //    println("------------------------------------------------------------------------ RANDOM FOREST REGRESSOR -----------------------------------------------------------------------")
+    //    println("----------------------------------------------------- RANDOM FOREST REGRESSOR ----------------------------------------------------")
     //
     //    // We create a random forest regressor algorithm
     //    val randomForest = new RandomForestRegressor()
