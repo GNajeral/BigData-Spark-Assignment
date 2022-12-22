@@ -1,11 +1,10 @@
-import breeze.linalg.NumericOps.Arrays.ArrayIsNumericOps
 import org.apache.spark.ml.Pipeline
 import org.apache.spark.ml.evaluation.RegressionEvaluator
 import org.apache.spark.ml.feature._
 import org.apache.spark.ml.linalg.SparseVector
 import org.apache.spark.ml.regression.{DecisionTreeRegressor, LinearRegression, RandomForestRegressor}
 import org.apache.spark.ml.tuning.{CrossValidator, ParamGridBuilder}
-import org.apache.spark.sql.{SparkSession}
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{IntegerType, StringType}
 
@@ -50,9 +49,10 @@ object Main2 {
     spark.sparkContext.setLogLevel("ERROR")
 
     println()
-    println("--------------------------------------------------- HOW MANY DATASETS YOU WISH TO PROCESS: -----------------------------------------------------------------")
+    println("--------------------------------------------- HOW MANY DATASETS YOU WISH TO PROCESS: ---------------------------------------------")
     println()
     val nDatasets = scala.io.StdIn.readLine().toInt
+    var df = spark.emptyDataFrame
 
     if (nDatasets == 1) {
       println()
@@ -60,24 +60,23 @@ object Main2 {
       println()
       val dataset = scala.io.StdIn.readLine()
       println()
-      println("------------------------------------------------ DATASET SELECTED: " + dataset + " -----------------------------------------------")
+      println("----------------------------------------------------- DATASET SELECTED: " + dataset + " -----------------------------------------------------")
       println()
-      // We read the input data
-      var df = spark.read.option("header", value = "true").csv("src/main/resources/" + dataset + ".csv")
+      df = spark.read.option("header", value = "true").csv("src/main/resources/" + dataset + ".csv")
     }
     else {
       println()
-      println("------------------------------------------ WRITE DOWN ONE BY ONE THE DATASETS YOU WISH TO PROCESS: --------------------------------")
+      println("------------------------------------------ WRITE DOWN ONE BY ONE THE DATASETS YOU WISH TO PROCESS: -------------------------------")
       println()
       var dataset = scala.io.StdIn.readLine()
-      var df = spark.read.option("header", value = "true").csv("src/main/resources/" + dataset + ".csv")
+      df = spark.read.option("header", value = "true").csv("src/main/resources/" + dataset + ".csv")
       println()
-      println("------------------------------------------ DATASET 1:" + dataset + " --------------------------------")
+      println("-------------------------------------------------------- DATASET 1: " + dataset + " ---------------------------------------------------------")
       println()
       for (i <- 1 until nDatasets) {
         dataset = scala.io.StdIn.readLine()
         println()
-        println("------------------------------------------ DATASET " + (i+1) + ":" + dataset + " --------------------------------")
+        println("-------------------------------------------------------- DATASET " + (i+1) + ": " + dataset + " ---------------------------------------------------------")
         println()
         df = df.union(spark.read.option("header", value = "true").csv("src/main/resources/" + dataset + ".csv"))
       }
@@ -90,7 +89,6 @@ object Main2 {
     println("----------------------------------------------------------------------------------------------------------------------------------")
     println()
 
-    var df = spark.read.option("header", value = "true").csv("src/main/resources/2000.csv")
     var dfPlane = spark.read.option("header", value = "true").csv("src/main/resources/plane-data.csv")
 
 
@@ -197,7 +195,6 @@ object Main2 {
     println("----------------------------------------------- Done -----------------------------------------------")
     println()
     df = df.cache()
-    df.count()
 
 
     println("------------------------- We delete the columns that only have NULL values -------------------------")
@@ -378,9 +375,6 @@ object Main2 {
     println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
-    for(i <- 0 until columnsToIndex.length){
-      df.groupBy(columnsToIndex(i)).count().show()
-    }
 
     // We use a pipeline in order to create a sequence of run stages
     println("---------------------------------------- Use of a pipeline -----------------------------------------")
@@ -434,18 +428,16 @@ object Main2 {
     println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
-    println("------------------------------------ Using False Discovery Rate ------------------------------------")
+    println("-------------------------------- Number of features after using FDR --------------------------------")
     val fdr = selectorFalseDiscoveryRate.fit(df)
     val dfFdr = fdr.transform(df)
-    println("----------------------------------- Number of features after FDR -----------------------------------")
     println(fdr.selectedFeatures.length)
     println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
-    println("----------------------------------- Using Family-Wise Error Rate -----------------------------------")
+    println("------------------------------- Number of features after using FWE ---------------------------------")
     val fwe = selectorFamilywiseErrorRate.fit(df)
     val dfFwe = fwe.transform(df)
-    println("---------------------------------- Number of features after FWE ------------------------------------")
     println(fwe.selectedFeatures.length)
     println("----------------------------------------------- Done -----------------------------------------------")
     println()
@@ -525,6 +517,7 @@ object Main2 {
     println(lrEvaluatorR2.evaluate(lrPredictionsFwe))
     println()
 
+    /*
 
     println("---------------------------------------------------- DECISION TREE REGRESSOR -----------------------------------------------------")
 
@@ -588,6 +581,8 @@ object Main2 {
     println("------------------ DTR: Coefficient of Determination (R2) - Family-wise Error Rate ------------------")
     println(dtrEvaluatorR2.evaluate(dtrPredictionsFwe))
     println()
+
+    */
 
 
     //    println("----------------------------------------------------- RANDOM FOREST REGRESSOR ----------------------------------------------------")
