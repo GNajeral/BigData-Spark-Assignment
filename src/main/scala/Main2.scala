@@ -67,6 +67,8 @@ object Main2 {
     println("----------------------------------------------------------------------------------------------------------------------------------")
     println()
 
+    df.show()
+
     // We delete the forbidden columns
     println("--------------------------------- We delete the forbidden columns ----------------------------------")
     val columnsToDrop = Array("ArrTime", "ActualElapsedTime", "AirTime", "TaxiIn", "Diverted", "CarrierDelay", "WeatherDelay", "NASDelay", "SecurityDelay", "LateAircraftDelay")
@@ -123,6 +125,7 @@ object Main2 {
     println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
+    df.show()
 
     // We delete the "TailNum" and "UniqueCarrier" columns as they are IDs and do not provide huge value
     println("----------------------- We delete the \"TailNum\" and \"UniqueCarrier\" columns ------------------------")
@@ -181,17 +184,6 @@ object Main2 {
 
     df.show()
 
-    /*
-    println("-------------------------- We delete the columns that have NULL/NaN values -------------------------")
-    println("----------------------------------------------- Done -----------------------------------------------")
-    for (i <- 0 until df.columns.length) {
-      val colName = df.columns(i)
-      df = df.filter(colName + " is NOT NULL").filter(colName + " NOT LIKE 'NA'").filter(colName + " NOT LIKE 'Unknow'")
-        .filter(colName + " NOT LIKE 'None'").filter(colName + " NOT LIKE ''").filter(colName + " NOT LIKE ' '")
-    }
-    println("----------------------------------------------- Done -----------------------------------------------")
-    println()
-    */
 
     // We cast to Integer every column in order to be able to use the imputer
     println("-------------- We cast to Integer every column in order to be able to use the imputer --------------")
@@ -283,7 +275,6 @@ object Main2 {
     println("----------------------- We change the value of \"DepTime\" and \"CRSArrTime\" --------------------------")
     println("----------------------------------------------- Done -----------------------------------------------")
     df = df.withColumn("DepTime", replaceTimeWithDayPart(col("DepTime")))
-    //df = df.withColumn("CRSDepTime", replaceTimeWithDayPart(col("CRSDepTime")))
     df = df.withColumn("CRSArrTime", replaceTimeWithDayPart(col("CRSArrTime")))
     numCols = numCols.filter(_ != "DepTime").filter(_ != "CRSDepTime").filter(_ != "CRSArrTime")
     println("----------------------------------------------- Done -----------------------------------------------")
@@ -360,7 +351,6 @@ object Main2 {
     df = df.drop(columnsToIndex:_*)
     df = df.drop(catCols:_*)
     df = df.drop(Array("Year", "DayOfWeek", "FlightNum", "DepDelay", "Distance", "TaxiOut", "DepTime", "CSRArrTime", "Month", "DayofMonth", "PlaneAge", "features"):_*)
-    //df = df.drop(Array("Year", "DayOfWeek", "FlightNum", "DepDelay", "Distance", "TaxiOut", "DepTime", "CSRArrTime", "Month", "DayofMonth", "CRSElapsedTime", "CRSDepTime", "PlaneAge", "features"):_*)
     df.show()
 
 
@@ -461,7 +451,7 @@ object Main2 {
     val Array(trainingDataFdr, testDataFdr) = dfFdr.randomSplit(Array(0.7, 0.3), 10)
     val Array(trainingDataFwe, testDataFwe) = dfFwe.randomSplit(Array(0.7, 0.3), 10)
 
-     */
+    */
 
     val Array(trainingData, testData) = df.randomSplit(Array(0.7, 0.3), 10)
 
@@ -510,8 +500,7 @@ object Main2 {
     // to after that use the best model to make predictions on the test data
     // to then evaluate the predictions using the chosen evaluation metric
     val lrModel = lrCrossValidator.fit(trainingData)
-
-    println("Model parameters:")
+    println("Model parameters in LR:")
     println(lrModel.bestModel.extractParamMap())
 
     val lrPredictions = lrModel.transform(testData)
@@ -526,66 +515,75 @@ object Main2 {
     /*
 
     val lrModelNtf = lrCrossValidator.fit(trainingDataNtf)
-    println("Model parameters - NumTopFeatures:")
+    println("Model parameters in LR - NumTopFeatures:")
     println(lrModelNtf.bestModel.extractParamMap())
+
     val lrPredictionsNtf = lrModelNtf.transform(testDataNtf)
     println("ArrDelay VS predictionLR - NumTopFeatures:")
     lrPredictionsNtf.select("ArrDelay", "predictionLR").show(10, truncate = false)
-    println("--------------------------------- LR: Root Mean Squared Error - NumTopFeatures -----------------------------------------------")
+
+    println("--------------------------- LR: Root Mean Squared Error - NumTopFeatures ---------------------------")
     println(lrEvaluatorRMSE.evaluate(lrPredictionsNtf))
-    println("--------------------------------- LR: Coefficient of Determination (R2) - NumTopFeatures -----------------------------------------------")
+    println("---------------------- LR: Coefficient of Determination (R2) - NumTopFeatures ----------------------")
     println(lrEvaluatorR2.evaluate(lrPredictionsNtf))
 
 
     val lrModelPrc = lrCrossValidator.fit(trainingDataPrc)
-    println("Model parameters - Percentile:")
+    println("Model parameters in LR - Percentile:")
     println(lrModelPrc.bestModel.extractParamMap())
+
     val lrPredictionsPrc = lrModelPrc.transform(testDataPrc)
     println("ArrDelay VS predictionLR - Percentile:")
     lrPredictionsPrc.select("ArrDelay", "predictionLR").show(10, truncate = false)
-    println("--------------------------------- LR: Root Mean Squared Error - Percentile -----------------------------------------------")
+
+    println("----------------------------- LR: Root Mean Squared Error - Percentile -----------------------------")
     println(lrEvaluatorRMSE.evaluate(lrPredictionsPrc))
-    println("--------------------------------- LR: Coefficient of Determination (R2) - Percentile -----------------------------------------------")
+    println("------------------------ LR: Coefficient of Determination (R2) - Percentile ------------------------")
     println(lrEvaluatorR2.evaluate(lrPredictionsPrc))
 
 
     val lrModelFpr = lrCrossValidator.fit(trainingDataFpr)
-    println("Model parameters - False Positive Rate:")
+    println("Model parameters in LR - False Positive Rate:")
     println(lrModelFpr.bestModel.extractParamMap())
+
     val lrPredictionsFpr = lrModelFpr.transform(testDataFpr)
     println("ArrDelay VS predictionLR - False Positive Rate:")
     lrPredictionsFpr.select("ArrDelay", "predictionLR").show(10, truncate = false)
-    println("--------------------------------- LR: Root Mean Squared Error - False Positive Rate -----------------------------------------------")
+
+    println("------------------------- LR: Root Mean Squared Error - False Positive Rate ------------------------")
     println(lrEvaluatorRMSE.evaluate(lrPredictionsFpr))
-    println("--------------------------------- LR: Coefficient of Determination (R2) - False Positive Rate -----------------------------------------------")
+    println("-------------------- LR: Coefficient of Determination (R2) - False Positive Rate -------------------")
     println(lrEvaluatorR2.evaluate(lrPredictionsFpr))
 
 
     val lrModelFdr = lrCrossValidator.fit(trainingDataFdr)
-    println("Model parameters - False Discovery Rate:")
+    println("Model parameters in LR - False Discovery Rate:")
     println(lrModelFdr.bestModel.extractParamMap())
+
     val lrPredictionsFdr = lrModelFdr.transform(testDataFdr)
     println("ArrDelay VS predictionLR - False Discovery Rate:")
     lrPredictionsFdr.select("ArrDelay", "predictionLR").show(10, truncate = false)
-    println("--------------------------------- LR: Root Mean Squared Error - False Discovery Rate -----------------------------------------------")
+
+    println("------------------------ LR: Root Mean Squared Error - False Discovery Rate ------------------------")
     println(lrEvaluatorRMSE.evaluate(lrPredictionsFdr))
-    println("--------------------------------- LR: Coefficient of Determination (R2) - False Discovery Rate -----------------------------------------------")
+    println("------------------- LR: Coefficient of Determination (R2) - False Discovery Rate -------------------")
     println(lrEvaluatorR2.evaluate(lrPredictionsFdr))
 
 
     val lrModelFwe = lrCrossValidator.fit(trainingDataFwe)
-    println("Model parameters - Family-wise Error Rate:")
+    println("Model parameters in LR - Family-wise Error Rate:")
     println(lrModelFwe.bestModel.extractParamMap())
+
     val lrPredictionsFwe = lrModelFwe.transform(testDataFwe)
     println("ArrDelay VS predictionLR - Family-wise Error Rate:")
     lrPredictionsFwe.select("ArrDelay", "predictionLR").show(10, truncate = false)
-    println("--------------------------------- LR: Root Mean Squared Error - Family-wise Error Rate-----------------------------------------------")
+
+    println("----------------------- LR: Root Mean Squared Error - Family-wise Error Rate -----------------------")
     println(lrEvaluatorRMSE.evaluate(lrPredictionsFwe))
-    println("--------------------------------- LR: Coefficient of Determination (R2) - Family-wise Error Rate -----------------------------------------------")
+    println("------------------ LR: Coefficient of Determination (R2) - Family-wise Error Rate ------------------")
     println(lrEvaluatorR2.evaluate(lrPredictionsFwe))
 
-     */
-
+    */
 
     //    println("---------------------------------------------------- DECISION TREE REGRESSOR -----------------------------------------------------")
     //
@@ -743,13 +741,14 @@ object Main2 {
     println("--------------------------------- DTR: Coefficient of Determination (R2) - Family-wise Error Rate -----------------------------------------------")
     println(dtrEvaluatorR2.evaluate(dtrPredictionsFwe))
 
+
     // Summary table with RMSE and R2 measures for all the trained, validated and evaluated models
     // R2 measures the variability of the dependent variable (ArrDelay) that is explained by the predictors (must be independent variables)
     // RMSE measures the differences between predicted values by the model and the actual values.
     println("--------------------------------- Summary of the performance of the models -----------------------------------------------")
     val summaryDF = Seq(
-      ("DECISION TREE REGRESSOR - Num Top Features Selection", dtrEvaluatorRMSE.evaluate(dtrPredictionsNtf), dtrEvaluatorR2.evaluate(dtrPredictionsNtf)),
-      ("DECISION TREE REGRESSOR - Percentile Selection", dtrEvaluatorRMSE.evaluate(dtrPredictionsPrc), dtrEvaluatorR2.evaluate(dtrPredictionsPrc)),
+      ("DECISION TREE REGRESSOR - Num Top Features Selection", lrEvaluatorRMSE.evaluate(lrPredictionsNtf), lrEvaluatorR2.evaluate(lrPredictionsNtf)),
+      ("DECISION TREE REGRESSOR - Percentile Selection", lrEvaluatorRMSE.evaluate(dtrPredictionsPrc), dtrEvaluatorR2.evaluate(dtrPredictionsPrc)),
       ("DECISION TREE REGRESSOR - False Positive Rate Selection", dtrEvaluatorRMSE.evaluate(dtrPredictionsFpr), dtrEvaluatorR2.evaluate(dtrPredictionsFpr)),
       ("DECISION TREE REGRESSOR - False Discovery Rate Selection", dtrEvaluatorRMSE.evaluate(dtrPredictionsFdr), dtrEvaluatorR2.evaluate(dtrPredictionsFdr)),
       ("DECISION TREE REGRESSOR - Family-Wise Error Rate Selection", dtrEvaluatorRMSE.evaluate(dtrPredictionsFwe), dtrEvaluatorR2.evaluate(dtrPredictionsFwe)))
