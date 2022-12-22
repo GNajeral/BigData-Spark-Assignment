@@ -230,15 +230,15 @@ object Main2 {
     println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
-    /*
-    // We delete the "CRSDepTime" and "CRSDepTime" columns as the correlation tell us that they produce a similar effect on the target variable
+
+    // We delete the "CRSDepTime" and "CRSElapsedTime" columns as the correlation tell us that they produce a similar effect on the target variable
     println("--------------------- We delete the \"CRSDepTime\" and \"CRSElapsedTime\" columns ----------------------")
     df = df.drop("CRSDepTime", "CRSElapsedTime")
     numCols = numCols.filter(_ != "CRSDepTime").filter(_ != "CRSElapsedTime")
     numColsMean = numColsMean.filter(_ != "CRSDepTime").filter(_ != "CRSElapsedTime")
     println("----------------------------------------------- Done -----------------------------------------------")
     println()
-     */
+
 
     // We apply the "most frequent" imputer for some numerical columns
     println("-------------------------------- We apply the \"most frequent\" imputer ------------------------------")
@@ -263,7 +263,6 @@ object Main2 {
     println("---------------- We create the column \"PlaneAge\" and remove the column \"issue_date\" ----------------")
     df = df.withColumnRenamed("issue_date", "PlaneAge")
     df = df.withColumn("PlaneAge", col("Year") - year(to_date(col("PlaneAge").cast(StringType), "M/d/y")))
-    //df = df.filter("PlaneAge >= 0")
     df = df.withColumn("PlaneAge", when(col("PlaneAge") < 0, 0).otherwise(col("PlaneAge")))
     numCols = numCols ++ Array("PlaneAge")
     println("----------------------------------------------- Done -----------------------------------------------")
@@ -280,10 +279,11 @@ object Main2 {
     println()
 
 
-    // We change the value of "DepTime", "CRSDepTime" and "CRSArrTime" to strings containing values such as morning, night... in order to apply one hot encoder more efficiently
-    println("------------------ We change the value of \"DepTime\", \"CRSDepTime\" and \"CRSArrTime\" -----------------")
+    // We change the value of "DepTime" and "CRSArrTime" to strings containing values such as morning, night... in order to apply one hot encoder more efficiently
+    println("----------------------- We change the value of \"DepTime\" and \"CRSArrTime\" --------------------------")
+    println("----------------------------------------------- Done -----------------------------------------------")
     df = df.withColumn("DepTime", replaceTimeWithDayPart(col("DepTime")))
-    df = df.withColumn("CRSDepTime", replaceTimeWithDayPart(col("CRSDepTime")))
+    //df = df.withColumn("CRSDepTime", replaceTimeWithDayPart(col("CRSDepTime")))
     df = df.withColumn("CRSArrTime", replaceTimeWithDayPart(col("CRSArrTime")))
     numCols = numCols.filter(_ != "DepTime").filter(_ != "CRSDepTime").filter(_ != "CRSArrTime")
     println("----------------------------------------------- Done -----------------------------------------------")
@@ -359,7 +359,8 @@ object Main2 {
     df = df.drop(indexedColumns:_*)
     df = df.drop(columnsToIndex:_*)
     df = df.drop(catCols:_*)
-    df = df.drop(Array("Year", "DayOfWeek", "FlightNum", "DepDelay", "Distance", "TaxiOut", "DepTime", "CSRArrTime", "Month", "DayofMonth", "CRSElapsedTime", "CRSDepTime", "PlaneAge", "features"):_*)
+    df = df.drop(Array("Year", "DayOfWeek", "FlightNum", "DepDelay", "Distance", "TaxiOut", "DepTime", "CSRArrTime", "Month", "DayofMonth", "PlaneAge", "features"):_*)
+    //df = df.drop(Array("Year", "DayOfWeek", "FlightNum", "DepDelay", "Distance", "TaxiOut", "DepTime", "CSRArrTime", "Month", "DayofMonth", "CRSElapsedTime", "CRSDepTime", "PlaneAge", "features"):_*)
     df.show()
 
 
