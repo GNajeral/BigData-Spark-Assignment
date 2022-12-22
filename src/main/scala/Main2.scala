@@ -14,28 +14,28 @@ import org.apache.spark.storage.StorageLevel
 object Main2 {
   private val replaceNullWithUnknown = udf((x: String) => {
     var res = new String
-    if (x == null || x == "Unknow" || x == "None" || x == "" || x == " ") res = "unknown"
-    else res = x
+    if (x == null || x == "Unknow" || x == "None" || x == "" || x == " ") { res = "unknown" }
+    else { res = x }
     res
   }).asNondeterministic()
 
   private val replaceNAWithNull = udf((x: String) => {
     var res = new String
-    if (x == "NA") res = null
-    else res = x
+    if (x == "NA") { res = null }
+    else { res = x }
     res
   }).asNondeterministic()
 
   private val replaceTimeWithDayPart = udf((x: Integer) => {
     var res = new String
-    if (x > 0 && x < 500) res = "lateNight"
-    if (x >= 500 && x < 800) res = "earlyMorning"
-    if (x >= 800 && x < 1200) res = "lateMorning"
-    if (x >= 1200 && x < 1400) res = "earlyAfternoon"
-    if (x >= 1400 && x < 1700) res = "lateAfternoon"
-    if (x >= 1700 && x < 1900) res = "earlyEvening"
-    if (x >= 1900 && x < 2100) res = "lateEvening"
-    if (x >= 2100 && x <= 2400) res = "earlyNight"
+    if (x > 0 && x < 500) { res = "lateNight" }
+    if (x >= 500 && x < 800) { res = "earlyMorning" }
+    if (x >= 800 && x < 1200) { res = "lateMorning" }
+    if (x >= 1200 && x < 1400) { res = "earlyAfternoon" }
+    if (x >= 1400 && x < 1700) { res = "lateAfternoon" }
+    if (x >= 1700 && x < 1900) { res = "earlyEvening" }
+    if (x >= 1900 && x < 2100) { res = "lateEvening" }
+    if (x >= 2100 && x <= 2400) { res = "earlyNight" }
     res
   }).asNondeterministic()
 
@@ -57,8 +57,8 @@ object Main2 {
     println()
 
     // We read the input data
-    var df = spark.read.option("header", value = "true").csv("src/main/resources/1987.csv")
-//    df = df.union(spark.read.option("header", value = "true").csv("src/main/resources/2000.csv"))
+    var df = spark.read.option("header", value = "true").csv("src/main/resources/2000.csv")
+    //df = df.union(spark.read.option("header", value = "true").csv("src/main/resources/2007.csv"))
     var dfPlane = spark.read.option("header", value = "true").csv("src/main/resources/plane-data.csv")
 
 
@@ -67,7 +67,6 @@ object Main2 {
     println("----------------------------------------------------------------------------------------------------------------------------------")
     println()
 
-    df.show()
 
     // We delete the forbidden columns
     println("--------------------------------- We delete the forbidden columns ----------------------------------")
@@ -119,11 +118,15 @@ object Main2 {
     println()
 
 
-    // We join the two datasets
-    println("--------------------------------------- Joining both datasets --------------------------------------")
-    df = df.join(dfPlane, "tailNum")
-    println("----------------------------------------------- Done -----------------------------------------------")
-    println()
+    // We join the two datasets (the dataset and the plane-data dataset) if the matching variable (TailNum) is not null
+    var included = false
+    if (df.groupBy("tailNum").count().groupBy("tailNum").count().count() > 1) {
+      println("--------------------------------------- Joining both datasets --------------------------------------")
+      included = true
+      df = df.join(dfPlane, "tailNum")
+      println("----------------------------------------------- Done -----------------------------------------------")
+      println()
+    }
 
     df.show()
 
@@ -133,20 +136,23 @@ object Main2 {
     println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
-    df.show()
 
-    // We clean the "issue_date" column from plane-data dataset as it is going to be used later
-    println("--------------------------------------- We clean \"issue_date\" --------------------------------------")
-    df = df.filter("issue_date is NOT NULL AND issue_date NOT LIKE 'None' AND issue_date NOT LIKE 'NA'")
-    println("----------------------------------------------- Done -----------------------------------------------")
-    println()
+    // If the plane-data dataset is included, we clean the "issue_date" column as it is going to be used later
+    if (included) {
+      println("--------------------------------------- We clean \"issue_date\" --------------------------------------")
+      df = df.filter("issue_date is NOT NULL AND issue_date NOT LIKE 'None' AND issue_date NOT LIKE 'NA'")
+      println("----------------------------------------------- Done -----------------------------------------------")
+      println()
+    }
 
 
-    // We delete the plane tailnumbers that do not have any data from plane-data dataset
-    println("-------- We delete the plane tailnumbers that do not have any data from plane-data dataset ---------")
-    df = df.filter("type is NOT NULL AND manufacturer is NOT NULL AND model is NOT NULL AND aircraft_type is NOT NULL AND engine_type is NOT NULL")
-    println("----------------------------------------------- Done -----------------------------------------------")
-    println()
+    // If the plane-data dataset is included, we delete the plane tailnumbers that do not have any data
+    if (included) {
+      println("-------- We delete the plane tailnumbers that do not have any data from plane-data dataset ---------")
+      df = df.filter("type is NOT NULL AND manufacturer is NOT NULL AND model is NOT NULL AND aircraft_type is NOT NULL AND engine_type is NOT NULL")
+      println("----------------------------------------------- Done -----------------------------------------------")
+      println()
+    }
 
 
     // We check for NA values in the each column of the dataset and set them to null for the imputers to do their work
@@ -161,16 +167,20 @@ object Main2 {
 
     println("------------------------- We delete the columns that only have NULL values -------------------------")
     // Numerical columns for "mean" imputer and "most frequent" imputer
+    // Categorical columns for the One Hot Encoder
     var numColsMean = Array("DepTime", "CRSDepTime", "CRSArrTime", "CRSElapsedTime", "DepDelay", "Distance", "TaxiOut")
     var numColsMf = Array("Year", "Month", "DayofMonth", "DayOfWeek", "FlightNum")
-    var catColsDf = Array("Origin", "Dest", "type", "manufacturer", "model", "aircraft_type", "engine_type")
+    var catColsDf = Array("Origin", "Dest")
     var columnsToDrop2 = df.columns
+
+    if (included) { catColsDf = catColsDf ++ Array("type", "manufacturer", "model", "aircraft_type", "engine_type") }
+
     for (i <- 0 until df.columns.length) {
       val column = df.columns(i)
       if (column == "Year" || df.groupBy(column).count().groupBy(column).count().count() > 1) {
         columnsToDrop2 = columnsToDrop2.filter(_ != column)
       }
-      else{
+      else {
         if (numColsMean.contains(column)) { numColsMean = numColsMean.filter(_ != column) }
         else if (numColsMf.contains(column)) { numColsMf = numColsMf.filter(_ != column) }
         else if (catColsDf.contains(column)) { catColsDf = catColsDf.filter(_ != column) }
@@ -184,21 +194,19 @@ object Main2 {
 
     df.show()
 
-
     // We cast to Integer every column in order to be able to use the imputer
     println("-------------- We cast to Integer every column in order to be able to use the imputer --------------")
     for (i <- 0 until df.columns.length) {
       val colName = df.columns(i)
-      if (numCols.contains(colName) || colName == "ArrDelay")
+      if (numCols.contains(colName) || colName == "ArrDelay") {
         df = df.withColumn(colName,col(colName).cast(IntegerType))
+      }
     }
     println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
-    df.show()
 
-    // We look at the correlation between the explanatory variables. If any of them are high correlated that indicates
-    // that one of them could be removed, as they produce a similar effect on the target variable
+    // We look at the correlation between the target variable and the explanatory variables
     println("------------------ Correlations between explanatory variables and target variable ------------------")
     for (i <- 0 until numCols.length) {
       val column = numCols(i)
@@ -208,9 +216,9 @@ object Main2 {
     println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
-
+    // Moreover, we also look at the correlation between the explanatory variables. If any are high correlated
+    // that indicates that one of them could be removed, as they produce a similar effect on the target variable
     println("---------------------------- Correlations between explanatory variables ----------------------------")
-    println("----------------------------------------------- Done -----------------------------------------------")
     for (i <- 0 until numCols.length) {
       val column = numCols(i)
       for(j <- i+1 until numCols.length) {
@@ -251,14 +259,16 @@ object Main2 {
     println()
 
 
-    // We create the column "PlaneAge" from the data in "Year" and "issue_date" to then remove the column "issue_date"
-    println("---------------- We create the column \"PlaneAge\" and remove the column \"issue_date\" ----------------")
-    df = df.withColumnRenamed("issue_date", "PlaneAge")
-    df = df.withColumn("PlaneAge", col("Year") - year(to_date(col("PlaneAge").cast(StringType), "M/d/y")))
-    df = df.withColumn("PlaneAge", when(col("PlaneAge") < 0, 0).otherwise(col("PlaneAge")))
-    numCols = numCols ++ Array("PlaneAge")
-    println("----------------------------------------------- Done -----------------------------------------------")
-    println()
+    // If the plane-data dataset is included, we create the column "PlaneAge" from the data in "Year" and "issue_date"
+    if (included) {
+      println("---------------- We create the column \"PlaneAge\" and remove the column \"issue_date\" ----------------")
+      df = df.withColumnRenamed("issue_date", "PlaneAge")
+      df = df.withColumn("PlaneAge", col("Year") - year(to_date(col("PlaneAge").cast(StringType), "M/d/y")))
+      df = df.withColumn("PlaneAge", when(col("PlaneAge") < 0, 0).otherwise(col("PlaneAge")))
+      numCols = numCols ++ Array("PlaneAge")
+      println("----------------------------------------------- Done -----------------------------------------------")
+      println()
+    }
 
 
     // We check for null values in the categorical columns and swap them with "unknown"
@@ -273,7 +283,6 @@ object Main2 {
 
     // We change the value of "DepTime" and "CRSArrTime" to strings containing values such as morning, night... in order to apply one hot encoder more efficiently
     println("----------------------- We change the value of \"DepTime\" and \"CRSArrTime\" --------------------------")
-    println("----------------------------------------------- Done -----------------------------------------------")
     df = df.withColumn("DepTime", replaceTimeWithDayPart(col("DepTime")))
     df = df.withColumn("CRSArrTime", replaceTimeWithDayPart(col("CRSArrTime")))
     numCols = numCols.filter(_ != "DepTime").filter(_ != "CRSDepTime").filter(_ != "CRSArrTime")
@@ -288,9 +297,9 @@ object Main2 {
     var indexedColumns = Array[String]()
 
 
-    for (i <- 0 until df.columns.length){
+    for (i <- 0 until df.columns.length) {
       val column = df.columns(i)
-      if(!numCols.contains(column) && column != "ArrDelay"){
+      if (!numCols.contains(column) && column != "ArrDelay") {
         columnsToIndex = columnsToIndex ++ Array(column)
         catCols = catCols ++ Array(column.concat("Cat"))
         indexedColumns = indexedColumns ++ Array(column.concat("Indexed"))
@@ -350,7 +359,8 @@ object Main2 {
     df = df.drop(indexedColumns:_*)
     df = df.drop(columnsToIndex:_*)
     df = df.drop(catCols:_*)
-    df = df.drop(Array("Year", "DayOfWeek", "FlightNum", "DepDelay", "Distance", "TaxiOut", "DepTime", "CSRArrTime", "Month", "DayofMonth", "PlaneAge", "features"):_*)
+    df = df.drop(Array("Year", "DayOfWeek", "FlightNum", "DepDelay", "Distance", "TaxiOut", "DepTime", "CSRArrTime", "Month", "DayofMonth", "features"):_*)
+    if (included) { df = df.drop(Array("PlaneAge"):_*) }
     df.show()
 
 
@@ -747,11 +757,11 @@ object Main2 {
     // RMSE measures the differences between predicted values by the model and the actual values.
     println("--------------------------------- Summary of the performance of the models -----------------------------------------------")
     val summaryDF = Seq(
-      ("DECISION TREE REGRESSOR - Num Top Features Selection", lrEvaluatorRMSE.evaluate(lrPredictionsNtf), lrEvaluatorR2.evaluate(lrPredictionsNtf)),
-      ("DECISION TREE REGRESSOR - Percentile Selection", lrEvaluatorRMSE.evaluate(dtrPredictionsPrc), dtrEvaluatorR2.evaluate(dtrPredictionsPrc)),
-      ("DECISION TREE REGRESSOR - False Positive Rate Selection", dtrEvaluatorRMSE.evaluate(dtrPredictionsFpr), dtrEvaluatorR2.evaluate(dtrPredictionsFpr)),
-      ("DECISION TREE REGRESSOR - False Discovery Rate Selection", dtrEvaluatorRMSE.evaluate(dtrPredictionsFdr), dtrEvaluatorR2.evaluate(dtrPredictionsFdr)),
-      ("DECISION TREE REGRESSOR - Family-Wise Error Rate Selection", dtrEvaluatorRMSE.evaluate(dtrPredictionsFwe), dtrEvaluatorR2.evaluate(dtrPredictionsFwe)))
+      ("LINEAR REGRESSION - Num Top Features Selection", lrEvaluatorRMSE.evaluate(lrPredictionsNtf), lrEvaluatorR2.evaluate(lrPredictionsNtf)),
+      ("LINEAR REGRESSION - Percentile Selection", lrEvaluatorRMSE.evaluate(lrPredictionsPrc), lrEvaluatorR2.evaluate(lrPredictionsPrc)),
+      ("LINEAR REGRESSION - False Positive Rate Selection", lrEvaluatorRMSE.evaluate(lrPredictionsFpr), lrEvaluatorR2.evaluate(lrPredictionsFpr)),
+      ("LINEAR REGRESSION - False Discovery Rate Selection", lrEvaluatorRMSE.evaluate(lrPredictionsFdr), lrEvaluatorR2.evaluate(lrPredictionsFdr)),
+      ("LINEAR REGRESSION - Family-Wise Error Rate Selection", lrEvaluatorRMSE.evaluate(lrPredictionsFwe), lrEvaluatorR2.evaluate(lrPredictionsFwe)))
       .toDF("Algorithm", "RMSE", "R2")
 
     summaryDF.show(false)
