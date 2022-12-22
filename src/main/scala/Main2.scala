@@ -87,13 +87,15 @@ object Main2 {
 
     // We filter the columns that can not contain negative values
     println("-------------------- We filter the columns that can not contain negative values --------------------")
-    df = df.filter("Month > 0 OR Month IS NULL OR Month LIKE 'NA'")
-    df = df.filter("DayofMonth > 0 OR DayofMonth IS NULL OR DayofMonth LIKE 'NA'")
-    df = df.filter("DayOfWeek > 0 OR DayOfWeek IS NULL OR DayOfWeek LIKE 'NA'")
-    df = df.filter("DepTime > 0 OR DepTime IS NULL OR DepTime LIKE 'NA'")
-    df = df.filter("CRSArrTime > 0 OR CRSArrTime IS NULL OR CRSArrTime LIKE 'NA'")
-    df = df.filter("Distance > 0 OR Distance IS NULL OR Distance LIKE 'NA'")
-    df = df.filter("TaxiOut > 0 OR TaxiOut IS NULL OR TaxiOut LIKE 'NA'")
+    df = df.filter("Month >= 0")
+    df = df.filter("DayofMonth >= 0")
+    df = df.filter("DayOfWeek >= 0")
+    df = df.filter("DepTime >= 0")
+    df = df.filter("CRSDepTime >= 0")
+    df = df.filter("CRSArrTime >= 0")
+    df = df.filter("CRSElapsedTime >= 0")
+    df = df.filter("Distance >= 0")
+    df = df.filter("TaxiOut >= 0")
     println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
@@ -345,6 +347,9 @@ object Main2 {
     println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
+    for(i <- 0 until columnsToIndex.length){
+      df.groupBy(columnsToIndex(i)).count().show()
+    }
 
     // We use a pipeline in order to create a sequence of run stages
     println("---------------------------------------- Use of a pipeline -----------------------------------------")
