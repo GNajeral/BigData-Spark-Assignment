@@ -28,7 +28,7 @@ object Main2 {
 
   private val replaceTimeWithDayPart = udf((x: Integer) => {
     var res = new String
-    if (x > 0 && x < 500) { res = "lateNight" }
+    if (x >= 0 && x < 500) { res = "lateNight" }
     if (x >= 500 && x < 800) { res = "earlyMorning" }
     if (x >= 800 && x < 1200) { res = "lateMorning" }
     if (x >= 1200 && x < 1400) { res = "earlyAfternoon" }
@@ -291,7 +291,6 @@ object Main2 {
     println("----------------------------------------------- Done -----------------------------------------------")
     println()
 
-    df.show()
 
     // We divide the variables into numerical/continuous and categorical
     var columnsToIndex = Array[String]()
@@ -325,7 +324,6 @@ object Main2 {
       .setOutputCols(catCols)
     println("----------------------------------------------- Done -----------------------------------------------")
     println()
-
 
     val assCols = numCols ++ catCols
 
