@@ -51,14 +51,47 @@ object Main2 {
     spark.sparkContext.setLogLevel("ERROR")
 
     println()
+    println("--------------------------------------------------- HOW MANY DATASETS YOU WISH TO PROCESS: -----------------------------------------------------------------")
+    println()
+    val nDatasets = scala.io.StdIn.readLine().toInt
+
+    if (nDatasets == 1) {
+      println()
+      println("------------------------------------------ WRITE DOWN THE DATASET YOU WISH TO PROCESS: -------------------------------------------")
+      println()
+      val dataset = scala.io.StdIn.readLine()
+      println()
+      println("------------------------------------------------ DATASET SELECTED: " + dataset + " -----------------------------------------------")
+      println()
+      // We read the input data
+      var df = spark.read.option("header", value = "true").csv("src/main/resources/" + dataset + ".csv")
+    }
+    else {
+      println()
+      println("------------------------------------------ WRITE DOWN ONE BY ONE THE DATASETS YOU WISH TO PROCESS: --------------------------------")
+      println()
+      var dataset = scala.io.StdIn.readLine()
+      var df = spark.read.option("header", value = "true").csv("src/main/resources/" + dataset + ".csv")
+      println()
+      println("------------------------------------------ DATASET 1:" + dataset + " --------------------------------")
+      println()
+      for (i <- 1 until nDatasets) {
+        dataset = scala.io.StdIn.readLine()
+        println()
+        println("------------------------------------------ DATASET " + (i+1) + ":" + dataset + " --------------------------------")
+        println()
+        df = df.union(spark.read.option("header", value = "true").csv("src/main/resources/" + dataset + ".csv"))
+      }
+    }
+
+
+    println()
     println("----------------------------------------------------------------------------------------------------------------------------------")
     println("--------------------------------------------------- DATA LOADING -----------------------------------------------------------------")
     println("----------------------------------------------------------------------------------------------------------------------------------")
     println()
 
-    // We read the input data
     var df = spark.read.option("header", value = "true").csv("src/main/resources/2000.csv")
-    //df = df.union(spark.read.option("header", value = "true").csv("src/main/resources/2007.csv"))
     var dfPlane = spark.read.option("header", value = "true").csv("src/main/resources/plane-data.csv")
 
 
@@ -165,6 +198,8 @@ object Main2 {
     }
     println("----------------------------------------------- Done -----------------------------------------------")
     println()
+    df = df.cache()
+    df.count()
 
 
     println("------------------------- We delete the columns that only have NULL values -------------------------")
