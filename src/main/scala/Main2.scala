@@ -57,8 +57,8 @@ object Main2 {
     println()
 
     // We read the input data
-    var df = spark.read.option("header", value = "true").csv("src/main/resources/2000.csv")
-    //df = df.union(spark.read.option("header", value = "true").csv("src/main/resources/2007.csv"))
+    var df = spark.read.option("header", value = "true").csv("src/main/resources/1987.csv")
+//    df = df.union(spark.read.option("header", value = "true").csv("src/main/resources/2000.csv"))
     var dfPlane = spark.read.option("header", value = "true").csv("src/main/resources/plane-data.csv")
 
 
