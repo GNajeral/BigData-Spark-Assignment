@@ -47,7 +47,7 @@ object Main {
       .getOrCreate()
 
     spark.sparkContext.setLogLevel("ERROR")
-    
+
     val nDatasets = args.length
     var df = spark.emptyDataFrame
 
