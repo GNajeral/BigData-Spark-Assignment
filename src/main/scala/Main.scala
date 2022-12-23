@@ -56,14 +56,14 @@ object Main {
       println()
       println("----------------------------------------------------- DATASET SELECTED: " + dataset + " -----------------------------------------------------")
       println()
-      df = spark.read.option("header", value = "true").csv(dataset)
+      df = spark.read.option("header", value = "true").csv("src/main/datasets/" + dataset + ".csv")
     }
     else {
       println()
       println("------------------------------------------------------------ DATASETS: -----------------------------------------------------------")
       println()
       var dataset = args(0)
-      df = spark.read.option("header", value = "true").csv(dataset)
+      df = spark.read.option("header", value = "true").csv("src/main/datasets/" + dataset + ".csv")
       println()
       println("-------------------------------------------------------- DATASET 1: " + dataset + " ---------------------------------------------------------")
       println()
@@ -72,7 +72,7 @@ object Main {
         println()
         println("-------------------------------------------------------- DATASET " + (i+1) + ": " + dataset + " ---------------------------------------------------------")
         println()
-        df = df.union(spark.read.option("header", value = "true").csv(dataset))
+        df = df.union(spark.read.option("header", value = "true").csv("src/main/datasets/" + dataset + ".csv"))
       }
     }
 
